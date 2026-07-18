@@ -10,6 +10,7 @@ var SHARE_URLS={Marketplace:"https://www.facebook.com/marketplace/create/item",G
 var PSEARCH_URLS={Marketplace:"https://www.facebook.com/marketplace/search/?query=",Gumtree:"https://www.gumtree.com.au/s-search.html?search=","eBay AU":"https://www.ebay.com.au/sch/i.html?_nkw="};
 
 var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="login", dbMode="demo", feedScope="suburb", searchQ="", catFilter="all";
+var googleClientId=null;
 var draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false};
 var modalItemId=null, modalMiniMode=null, modalMiniId=null;
 var io=null;
@@ -33,6 +34,7 @@ function api(path,method,body){
 function boot(){
   applyTheme();
   bindModalOnce();
+  api("/config").then(function(j){googleClientId=j.googleClientId||null;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
 }
 function refresh(){
@@ -85,22 +87,80 @@ function locate(inputId,btnEl){
 }
 
 /* ---------- auth ---------- */
+function googleIcon(){return '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.6 20-21 0-1.2-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.5 3 24 3c-7.5 0-14 4.2-17.7 10.7z"/><path fill="#4CAF50" d="M24 45c5.4 0 10.3-1.8 14.1-5l-6.5-5.5c-2.1 1.5-4.8 2.5-7.6 2.5-5.3 0-9.8-3.4-11.4-8.1l-6.6 5.1C9.9 40.4 16.4 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.5 5.5C41.6 35.5 45 30.2 45 24c0-1.2-.1-2.4-.4-3.5z"/></svg>';}
+function appleIcon(){return '<svg width="16" height="16" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141 8 184.8 8 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-65.7-90-65.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>';}
+function oauthButtonsHtml(){
+  var google=googleClientId?'<div id="gsiBtn"></div>':'<button type="button" class="oauth-btn" data-act="google-soon">'+googleIcon()+'<span>Continue with Google</span></button>';
+  var apple='<button type="button" class="oauth-btn apple" data-act="apple-soon">'+appleIcon()+'<span>Continue with Apple</span></button>';
+  return '<div class="oauthstack">'+google+apple+'</div>';
+}
+function renderGoogleButton(attempts){
+  if(!googleClientId)return;
+  var big=document.getElementById("gsiBtn"),small=document.getElementById("gsiBtnSmall");
+  if(!big&&!small)return;
+  if(!(window.google&&google.accounts&&google.accounts.id)){
+    if((attempts||0)<10)setTimeout(function(){renderGoogleButton((attempts||0)+1);},300);
+    return;
+  }
+  google.accounts.id.initialize({client_id:googleClientId,callback:onGoogleCredential});
+  if(big)google.accounts.id.renderButton(big,{theme:"outline",size:"large",shape:"pill",width:Math.min((big.parentElement||{}).offsetWidth||320,400)});
+  if(small)google.accounts.id.renderButton(small,{theme:"outline",size:"medium",shape:"pill",text:"continue_with"});
+}
+function onGoogleCredential(response){
+  api("/oauth/google","POST",{credential:response.credential}).then(function(j){
+    me=j.me;
+    toast(j.isNew?"Welcome! You appear as "+me.handle:"Welcome back, "+me.handle);
+    refresh();startPolling();
+  }).catch(function(err){toast(err.message,true);});
+}
 function viewAuth(){
-  var login=authMode==="login";
-  return '<div class="authwrap">'+
-  '<div class="logo reveal"><img src="/logo.svg" alt="'+APP+' logo"></div>'+
-  '<div class="logoname reveal">'+APP+'</div>'+
-  '<div class="sub reveal">'+TAGLINE+'</div>'+
+  return authMode==="login"?viewAuthLogin():viewAuthSignup();
+}
+function viewAuthSignup(){
+  return '<div class="authsplit"><div class="splitcard">'+
+  '<div class="promo reveal">'+
+    '<img src="/logo.svg" alt="">'+
+    '<h1>'+APP+'</h1>'+
+    '<p class="tag">'+TAGLINE+'</p>'+
+    '<ul>'+
+      '<li><span class="ck">✓</span>Post an item in under a minute — free, forever.</li>'+
+      '<li><span class="ck">✓</span>Neighbours only ever see an anonymous handle like <b>Kerb-Wombat-482</b> — never your name or number.</li>'+
+      '<li><span class="ck">✓</span>Nobody claims it? It\'s auto-booked for your council truck day, so nothing sits on the kerb.</li>'+
+    '</ul>'+
+  '</div>'+
+  '<div class="formside reveal">'+
+    '<h2>Create your account</h2>'+
+    '<p class="sub">Takes about 30 seconds.</p>'+
+    oauthButtonsHtml()+
+    '<div class="divider">or sign up with email</div>'+
+    '<form id="authForm">'+
+    '<div class="field"><label for="a-email">Email</label><input id="a-email" type="email" required autocomplete="email"></div>'+
+    '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" required minlength="6" autocomplete="new-password"></div>'+
+    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. Wentworthville" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
+    '<div class="field"><label for="a-day">Council truck day</label><select id="a-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===3?" selected":"")+'>'+w+'</option>';}).join("")+'</select></div>'+
+    '<button type="submit" class="pill pri block">Create account</button>'+
+    '</form>'+
+    '<div class="switch">Already have an account? <a data-act="switch-auth">Log in</a></div>'+
+    '<div class="legal" style="margin-top:16px"><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a> · Works Australia-wide</div>'+
+  '</div>'+
+  '</div></div>';
+}
+function viewAuthLogin(){
+  var googleLink=googleClientId?'<div id="gsiBtnSmall" style="display:flex;justify-content:center"></div>':'<button type="button" class="oauth-small" data-act="google-soon">'+googleIcon()+'<span>Continue with Google</span></button>';
+  return '<div class="loginwrap">'+
+  '<div class="loginhero reveal">'+
+    '<img src="/logo.svg" alt="'+APP+' logo">'+
+    '<h1>Welcome back</h1>'+
+    '<p>'+TAGLINE+'</p>'+
+  '</div>'+
   '<div class="authcard reveal">'+
-  '<div class="note" style="margin-top:0;box-shadow:none"><strong>Your privacy:</strong> no phone number needed, ever. Neighbours only see an anonymous handle like <span style="font-family:\'JetBrains Mono\',monospace">Kerb-Wombat-482</span> — never your name, email or number.</div>'+
   '<form id="authForm">'+
   '<div class="field"><label for="a-email">Email</label><input id="a-email" type="email" required autocomplete="email"></div>'+
-  '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" required minlength="6" autocomplete="'+(login?"current-password":"new-password")+'"></div>'+
-  (login?"":'<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. Wentworthville" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
-   '<div class="field"><label for="a-day">Council truck day</label><select id="a-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===3?" selected":"")+'>'+w+'</option>';}).join("")+'</select></div>')+
-  '<button type="submit" class="pill pri block">'+(login?"Log in":"Create account")+'</button>'+
+  '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" required minlength="6" autocomplete="current-password"></div>'+
+  '<button type="submit" class="pill pri block">Log in</button>'+
   '</form>'+
-  '<div class="switch">'+(login?'New here? <a data-act="switch-auth">Create an account</a>':'Already have an account? <a data-act="switch-auth">Log in</a>')+'</div>'+
+  '<div class="altauth">'+googleLink+'</div>'+
+  '<div class="switch">New here? <a data-act="switch-auth">Create an account</a></div>'+
   '</div>'+
   '<div class="legal" style="margin-top:18px"><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a> · Works Australia-wide</div>'+
   '</div>';
@@ -364,7 +424,7 @@ function nextPickup(){
 }
 function render(){
   var app=document.getElementById("app");
-  if(!me){app.innerHTML=viewAuth();bind();initScrollAnim();return;}
+  if(!me){app.innerHTML=viewAuth();bind();initScrollAnim();renderGoogleButton();return;}
   var next=nextPickup();
   var d=daysTo(next);var lbl=d<=0?"Today":d===1?"Tomorrow":"in "+d+" days";
   var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():viewProfile();
@@ -523,6 +583,8 @@ function openReceipt(id){
 }
 function act(action,id,el){
   if(action==="switch-auth"){authMode=authMode==="login"?"signup":"login";render();return;}
+  if(action==="google-soon"){toast(googleClientId?"Google Sign-In is loading — try again in a second.":"Google Sign-In isn't connected yet — it needs a free Google Client ID.",true);return;}
+  if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("kerbit-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
   if(action==="catf"){catFilter=id;render();return;}

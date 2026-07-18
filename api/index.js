@@ -8,6 +8,7 @@ const SECRET = process.env.SESSION_SECRET || "kerbside-pilot-secret-change-me";
 const SUPA_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 const HAS_DB = !!(SUPA_URL && SUPA_KEY);
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 
 const CLAIM_HOLD_DAYS = 2;
 const FLAGS_TO_OBSERVE = 2;
@@ -110,6 +111,42 @@ async function notify(userId, text, itemId) {
   await db.put("notifs", id, { id, userId, text, itemId: itemId || null, read: false, at: now() });
 }
 
+/* ---------------- Google Sign-In (ID token verification, no client secret needed) ---------------- */
+let googleJWKSCache = null, googleJWKSCacheAt = 0;
+async function getGoogleJWKS(forceFresh) {
+  if (!forceFresh && googleJWKSCache && now() - googleJWKSCacheAt < 3600000) return googleJWKSCache;
+  const res = await fetch("https://www.googleapis.com/oauth2/v3/certs");
+  if (!res.ok) throw new Error("Couldn't fetch Google signing keys");
+  googleJWKSCache = await res.json();
+  googleJWKSCacheAt = now();
+  return googleJWKSCache;
+}
+function b64urlJSON(part) {
+  return JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+}
+async function verifyGoogleIdToken(idToken) {
+  const parts = String(idToken || "").split(".");
+  if (parts.length !== 3) throw new Error("Malformed token");
+  const [headerB64, payloadB64, sigB64] = parts;
+  const header = b64urlJSON(headerB64);
+  const payload = b64urlJSON(payloadB64);
+  if (header.alg !== "RS256") throw new Error("Unexpected signing algorithm");
+  let jwks = await getGoogleJWKS(false);
+  let key = (jwks.keys || []).find((k) => k.kid === header.kid);
+  if (!key) { jwks = await getGoogleJWKS(true); key = (jwks.keys || []).find((k) => k.kid === header.kid); }
+  if (!key) throw new Error("Unknown signing key");
+  const keyObject = crypto.createPublicKey({ key: { kty: key.kty, n: key.n, e: key.e }, format: "jwk" });
+  const verifier = crypto.createVerify("RSA-SHA256");
+  verifier.update(headerB64 + "." + payloadB64);
+  verifier.end();
+  if (!verifier.verify(keyObject, Buffer.from(sigB64, "base64url"))) throw new Error("Bad signature");
+  if (!payload.exp || payload.exp * 1000 < now()) throw new Error("Token expired");
+  if (payload.aud !== GOOGLE_CLIENT_ID) throw new Error("Token not issued for this app");
+  if (payload.iss !== "accounts.google.com" && payload.iss !== "https://accounts.google.com") throw new Error("Bad issuer");
+  if (!payload.email || !payload.email_verified) throw new Error("Email not verified with Google");
+  return payload;
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
@@ -179,6 +216,37 @@ module.exports = async function handler(req, res) {
     // ---- auth-free routes ----
     if (path === "/health") return send(res, 200, { ok: true, dbMode: HAS_DB ? "supabase" : "demo" });
 
+    if (path === "/config" && method === "GET")
+      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null });
+
+    if (path === "/oauth/google" && method === "POST") {
+      if (!GOOGLE_CLIENT_ID) return send(res, 400, { error: "Google sign-in isn't connected yet." });
+      let payload;
+      try { payload = await verifyGoogleIdToken(body.credential); }
+      catch { return send(res, 401, { error: "Google sign-in failed — please try again." }); }
+      const email = String(payload.email).trim().toLowerCase();
+      const users = await db.list("users");
+      let user = users.find((u) => u.oauthGoogleSub === payload.sub) || users.find((u) => u.email === email);
+      let isNew = false;
+      if (user) {
+        if (!user.oauthGoogleSub) user.oauthGoogleSub = payload.sub;
+      } else {
+        isNew = true;
+        user = {
+          id: uid("u"), email, salt: null, passHash: null, oauthGoogleSub: payload.sub,
+          handle: anonHandle(),
+          name: String(payload.name || "").slice(0, 30) || null,
+          suburb: "Wentworthville", pickupWeekday: 3,
+          handoffs: 0, truckSaved: 0, ratings: [],
+          platformTokens: {}, createdAt: now(),
+        };
+        await notify(user.id, "Welcome to Kerbside! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
+      }
+      await db.put("users", user.id, user);
+      const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
+      return send(res, 200, { ok: true, me: meView(user), isNew }, sessionCookie(token));
+    }
+
     if (path === "/signup" && method === "POST") {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
@@ -206,7 +274,9 @@ module.exports = async function handler(req, res) {
       const email = String(body.email || "").trim().toLowerCase();
       const users = await db.list("users");
       const user = users.find((u) => u.email === email);
-      if (!user || hashPass(String(body.password || ""), user.salt) !== user.passHash)
+      if (!user) return send(res, 401, { error: "Wrong email or password." });
+      if (!user.passHash) return send(res, 401, { error: "This account uses Google sign-in — tap “Continue with Google” instead." });
+      if (hashPass(String(body.password || ""), user.salt) !== user.passHash)
         return send(res, 401, { error: "Wrong email or password." });
       const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
       return send(res, 200, { ok: true, me: meView(user) }, sessionCookie(token));

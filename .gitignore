@@ -5,3 +5,5 @@ node_modules/
 ACCOUNTS.md
 *.log
 .claude/settings.local.json
+
+.vercel
