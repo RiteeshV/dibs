@@ -9,6 +9,9 @@ const SUPA_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 const HAS_DB = !!(SUPA_URL && SUPA_KEY);
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID || "";
+const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET || "";
+const HAS_EBAY = !!(EBAY_CLIENT_ID && EBAY_CLIENT_SECRET);
 
 const CLAIM_HOLD_DAYS = 2;
 const FLAGS_TO_OBSERVE = 2;
@@ -16,6 +19,23 @@ const INSTANT_OBSERVE_REASONS = ["Not relevant / inappropriate", "Unsafe item", 
 const MAX_MEDIA = 4;
 const MAX_IMAGE_B64 = 420 * 1024;      // ~300KB binary
 const MAX_VIDEO_B64 = 3.6 * 1024 * 1024; // ~2.6MB binary
+
+/* Eco Points — a gamified points system, not real/redeemable rewards */
+const ECO_POINTS = { handoffPoster: 15, handoffClaimer: 10, truckdone: 5 };
+const ECO_TIERS = [
+  { min: 0, name: "Kerb Rookie", icon: "🌱" },
+  { min: 50, name: "Kerb Regular", icon: "♻️" },
+  { min: 150, name: "Kerb Champion", icon: "🌟" },
+  { min: 350, name: "Kerb Hero", icon: "🏆" },
+  { min: 700, name: "Kerb Legend", icon: "👑" },
+];
+function tierFor(points) {
+  let cur = ECO_TIERS[0], next = ECO_TIERS[1] || null;
+  for (let i = 0; i < ECO_TIERS.length; i++) {
+    if (points >= ECO_TIERS[i].min) { cur = ECO_TIERS[i]; next = ECO_TIERS[i + 1] || null; }
+  }
+  return { name: cur.name, icon: cur.icon, next: next ? { name: next.name, icon: next.icon, pointsToGo: next.min - points } : null };
+}
 
 /* ---------------- Generic store ---------------- */
 // Demo store (per-instance memory)
@@ -147,6 +167,39 @@ async function verifyGoogleIdToken(idToken) {
   return payload;
 }
 
+/* ---------------- eBay AU Browse API (real in-app search results) ---------------- */
+let ebayTokenCache = null, ebayTokenExpAt = 0;
+async function getEbayToken() {
+  if (ebayTokenCache && now() < ebayTokenExpAt - 60000) return ebayTokenCache;
+  const basic = Buffer.from(EBAY_CLIENT_ID + ":" + EBAY_CLIENT_SECRET).toString("base64");
+  const res = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: { Authorization: "Basic " + basic, "Content-Type": "application/x-www-form-urlencoded" },
+    body: "grant_type=client_credentials&scope=" + encodeURIComponent("https://api.ebay.com/oauth/api_scope"),
+  });
+  if (!res.ok) throw new Error("eBay auth failed: " + res.status);
+  const j = await res.json();
+  ebayTokenCache = j.access_token;
+  ebayTokenExpAt = now() + (j.expires_in || 7200) * 1000;
+  return ebayTokenCache;
+}
+async function searchEbay(query) {
+  const token = await getEbayToken();
+  const url = "https://api.ebay.com/buy/browse/v1/item_summary/search?q=" + encodeURIComponent(query) + "&limit=6&filter=" + encodeURIComponent("itemLocationCountry:AU");
+  const res = await fetch(url, {
+    headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_AU" },
+  });
+  if (!res.ok) throw new Error("eBay search failed: " + res.status);
+  const j = await res.json();
+  return (j.itemSummaries || []).slice(0, 6).map((it) => ({
+    title: it.title,
+    price: it.price ? (it.price.value + " " + it.price.currency) : null,
+    image: it.image ? it.image.imageUrl : null,
+    url: it.itemWebUrl,
+    condition: it.condition || null,
+  }));
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
@@ -217,7 +270,7 @@ module.exports = async function handler(req, res) {
     if (path === "/health") return send(res, 200, { ok: true, dbMode: HAS_DB ? "supabase" : "demo" });
 
     if (path === "/config" && method === "GET")
-      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null });
+      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY });
 
     if (path === "/oauth/google" && method === "POST") {
       if (!GOOGLE_CLIENT_ID) return send(res, 400, { error: "Google sign-in isn't connected yet." });
@@ -237,7 +290,7 @@ module.exports = async function handler(req, res) {
           handle: anonHandle(),
           name: String(payload.name || "").slice(0, 30) || null,
           suburb: "Wentworthville", pickupWeekday: 3,
-          handoffs: 0, truckSaved: 0, ratings: [],
+          handoffs: 0, truckSaved: 0, ratings: [], ecoPoints: 0,
           platformTokens: {}, createdAt: now(),
         };
         await notify(user.id, "Welcome to Kerbside! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
@@ -261,7 +314,7 @@ module.exports = async function handler(req, res) {
         name: String(body.name || "").slice(0, 30) || null,
         suburb: String(body.suburb || "Wentworthville").slice(0, 40),
         pickupWeekday: Number.isInteger(body.pickupWeekday) ? Math.max(0, Math.min(6, body.pickupWeekday)) : 3,
-        handoffs: 0, truckSaved: 0, ratings: [],
+        handoffs: 0, truckSaved: 0, ratings: [], ecoPoints: 0,
         platformTokens: {}, createdAt: now(),
       };
       await db.put("users", user.id, user);
@@ -291,6 +344,18 @@ module.exports = async function handler(req, res) {
     if (!me) return send(res, 401, { error: "Not logged in." });
 
     if (path === "/me" && method === "GET") return send(res, 200, { me: meView(me), dbMode: HAS_DB ? "supabase" : "demo" });
+
+    if (path === "/search/ebay" && method === "GET") {
+      if (!HAS_EBAY) return send(res, 400, { error: "eBay search isn't connected yet." });
+      const q = String(url.searchParams.get("q") || "").trim().slice(0, 80);
+      if (!q) return send(res, 400, { error: "Search for something first." });
+      try {
+        const results = await searchEbay(q);
+        return send(res, 200, { results });
+      } catch {
+        return send(res, 502, { error: "Couldn't reach eBay — try again." });
+      }
+    }
 
     if (path === "/profile" && method === "PUT") {
       if (body.name !== undefined) me.name = String(body.name || "").slice(0, 30) || null;
@@ -394,6 +459,11 @@ module.exports = async function handler(req, res) {
         item.status = "collected";
         addHistory(item, "Handoff confirmed — the tag is torn off");
         me.handoffs = (me.handoffs || 0) + 1;
+        me.ecoPoints = (me.ecoPoints || 0) + ECO_POINTS.handoffPoster;
+        if (item.claim && item.claim.byId) {
+          const claimer = await db.get("users", item.claim.byId);
+          if (claimer) { claimer.ecoPoints = (claimer.ecoPoints || 0) + ECO_POINTS.handoffClaimer; await db.put("users", claimer.id, claimer); }
+        }
         let receipt = null;
         if (item.price > 0 && item.claim) {
           receipt = {
@@ -421,6 +491,7 @@ module.exports = async function handler(req, res) {
         item.status = "collected_by_truck";
         addHistory(item, "Collected by the council truck");
         me.truckSaved = (me.truckSaved || 0) + 1;
+        me.ecoPoints = (me.ecoPoints || 0) + ECO_POINTS.truckdone;
         await db.put("users", me.id, me);
         await db.put("items", item.id, item);
         return send(res, 200, { ok: true });
@@ -469,6 +540,16 @@ module.exports = async function handler(req, res) {
       return send(res, 200, { receipts: mine });
     }
 
+    if (path === "/leaderboard" && method === "GET") {
+      const users = await db.list("users");
+      const top = users
+        .filter((u) => (u.suburb || "").toLowerCase() === (me.suburb || "").toLowerCase() && (u.ecoPoints || 0) > 0)
+        .sort((a, b) => (b.ecoPoints || 0) - (a.ecoPoints || 0))
+        .slice(0, 5)
+        .map((u) => ({ handle: u.handle, ecoPoints: u.ecoPoints || 0, tier: tierFor(u.ecoPoints || 0), trusted: (u.handoffs || 0) >= 3, mine: u.id === me.id }));
+      return send(res, 200, { suburb: me.suburb, leaderboard: top });
+    }
+
     if (path === "/notifications" && method === "GET") {
       const all = await db.list("notifs");
       const mine = all.filter((n) => n.userId === me.id).sort((a, b) => b.at - a.at).slice(0, 50);
@@ -495,6 +576,7 @@ function meView(u) {
     pickupWeekday: u.pickupWeekday, handoffs: u.handoffs || 0, truckSaved: u.truckSaved || 0,
     trusted: (u.handoffs || 0) >= 3, avgRating: avg,
     platformsConnected: Object.keys(u.platformTokens || {}).filter((k) => u.platformTokens[k]),
+    ecoPoints: u.ecoPoints || 0, tier: tierFor(u.ecoPoints || 0),
   };
 }
 function itemView(it, me, owner) {

@@ -278,6 +278,33 @@ legend{font-family:'Outfit',sans-serif;font-size:13px;font-weight:800;padding:0 
 .impact .row{display:flex;gap:20px;flex-wrap:wrap}
 .impact .n{font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:700}
 .impact .l{font-size:10.5px;color:var(--soft)}
+
+/* ---------- eco points ---------- */
+.ecocard{background:linear-gradient(120deg,color-mix(in srgb,var(--amber) 10%,var(--card)),var(--card));border:1px solid var(--line);border-radius:var(--r);padding:17px 19px;margin:0 0 16px;box-shadow:var(--shadow)}
+.ecocard .t{font-family:'Outfit',sans-serif;font-size:15px;font-weight:800;margin-bottom:6px}
+.ecopts{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:var(--amber)}
+.ecopts span{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;color:var(--soft);margin-left:4px}
+.ecobar{height:9px;border-radius:999px;background:var(--card2);border:1px solid var(--line);margin-top:10px;overflow:hidden}
+.ecofill{height:100%;background:linear-gradient(90deg,var(--amber),var(--teal));border-radius:999px;transition:width .5s ease}
+
+/* ---------- leaderboard ---------- */
+.lbrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px dashed var(--line);font-size:12.5px}
+.lbrow:first-of-type{border-top:none}
+.lbrow.mine{background:var(--tealglow);border-radius:10px;padding-left:8px;padding-right:8px;margin:0 -8px}
+.lbrank{font-family:'JetBrains Mono',monospace;color:var(--faint);width:26px;flex-shrink:0}
+.lbname{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lbtier{flex-shrink:0}
+.lbpts{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--amber);flex-shrink:0}
+
+/* ---------- eBay inline results ---------- */
+.ebayrow{display:flex;gap:10px;overflow-x:auto;padding-top:2px;scrollbar-width:none}
+.ebayrow::-webkit-scrollbar{display:none}
+.ebaycard{flex-shrink:0;width:132px;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card2);transition:transform .16s,box-shadow .16s;display:block}
+.ebaycard:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.ebaycard img{width:100%;height:100px;object-fit:cover;display:block}
+.ebayph{width:100%;height:100px;display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--card2)}
+.ebaycard .et{font-size:11px;font-weight:600;padding:7px 8px 2px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ebaycard .ep{font-size:11px;font-weight:700;color:var(--teal);padding:0 8px 8px;font-family:'JetBrains Mono',monospace}
 .rcpt{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px dashed var(--line);padding:12px 0;font-size:12.5px}
 .rcpt:first-of-type{border-top:none}
 .rcpt .rid{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--teal)}

@@ -10,7 +10,7 @@ var SHARE_URLS={Marketplace:"https://www.facebook.com/marketplace/create/item",G
 var PSEARCH_URLS={Marketplace:"https://www.facebook.com/marketplace/search/?query=",Gumtree:"https://www.gumtree.com.au/s-search.html?search=","eBay AU":"https://www.ebay.com.au/sch/i.html?_nkw="};
 
 var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="login", dbMode="demo", feedScope="suburb", searchQ="", catFilter="all";
-var googleClientId=null;
+var googleClientId=null, ebayEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
 var draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false};
 var modalItemId=null, modalMiniMode=null, modalMiniId=null;
 var io=null;
@@ -34,7 +34,7 @@ function api(path,method,body){
 function boot(){
   applyTheme();
   bindModalOnce();
-  api("/config").then(function(j){googleClientId=j.googleClientId||null;if(!me)render();}).catch(function(){});
+  api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
 }
 function refresh(){
@@ -325,8 +325,26 @@ function viewFeed(){
     CATS.map(function(c){return '<button class="cattile'+(catFilter===c[0]?" on":"")+'" data-act="catf" data-id="'+c[0]+'"><span class="circ">'+c[2]+'</span><span class="lbl">'+c[1]+'</span></button>';}).join("")+
   '</div>';
   var psearch='<div class="psearch reveal">Can\'t find it on '+APP+'? Search the same thing everywhere:'+
-    '<div class="pbtns">'+Object.keys(PSEARCH_URLS).map(function(p){return '<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';}).join("")+'</div></div>';
-  return demo+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch;
+    '<div class="pbtns">'+Object.keys(PSEARCH_URLS).map(function(p){
+      return p==="eBay AU"
+        ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU 🔎</button>'
+        :'<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
+    }).join("")+'</div></div>';
+  return demo+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
+}
+function ebayPanelHtml(){
+  if(ebayLoading)return '<div class="psearch reveal"><p class="hint" style="margin:0">🔎 Searching eBay AU…</p></div>';
+  if(!ebayResults)return "";
+  if(ebayResults.error)return '<div class="psearch reveal"><p class="hint" style="margin:0;color:var(--red)">'+esc(ebayResults.error)+'</p></div>';
+  if(!ebayResults.items.length)return '<div class="psearch reveal"><p class="hint" style="margin:0">No eBay AU results for “'+esc(ebayResults.q)+'”.</p></div>';
+  return '<div class="psearch reveal"><div style="font-weight:700;margin-bottom:10px">🛒 Also on eBay AU for “'+esc(ebayResults.q)+'”</div>'+
+    '<div class="ebayrow">'+ebayResults.items.map(function(it){
+      return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
+        (it.image?'<img src="'+esc(it.image)+'" alt="">':'<div class="ebayph">🛒</div>')+
+        '<div class="et">'+esc(it.title)+'</div>'+
+        (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
+      '</a>';
+    }).join("")+'</div></div>';
 }
 function viewPost(){
   return '<h2 class="st reveal">Post something</h2><form id="postForm" novalidate class="reveal">'+
@@ -369,6 +387,29 @@ function impactHtml(){
   '<div><span class="n">~'+kg+'kg</span><div class="l">waste diverted</div></div>'+
   '</div></div>';
 }
+function loadLeaderboard(){
+  api("/leaderboard").then(function(j){leaderboard=j;render();}).catch(function(){leaderboard={leaderboard:[]};});
+}
+function ecoPointsHtml(){
+  var t=me.tier;
+  var pct=t.next?Math.max(6,Math.min(100,Math.round((me.ecoPoints/(me.ecoPoints+t.next.pointsToGo))*100))):100;
+  return '<div class="ecocard reveal"><div class="t">'+t.icon+' '+esc(t.name)+'</div>'+
+  '<div class="ecopts">'+me.ecoPoints+' <span>eco points</span></div>'+
+  '<div class="ecobar"><div class="ecofill" style="width:'+pct+'%"></div></div>'+
+  (t.next?'<p class="hint" style="margin:8px 0 0">'+t.next.pointsToGo+' points to '+t.next.icon+' '+esc(t.next.name)+'</p>':'<p class="hint" style="margin:8px 0 0">You\'ve reached the top tier!</p>')+
+  '<p class="hint" style="margin-top:8px">+15 for handing off an item, +10 for claiming one, +5 when the truck collects it. Points are a fun way to track your impact — not redeemable for cash.</p>'+
+  '</div>';
+}
+function leaderboardHtml(){
+  if(!leaderboard)return '<fieldset class="reveal"><legend>🏆 Neighbourhood leaderboard</legend><p class="hint" style="margin:0">Loading…</p></fieldset>';
+  var rows=leaderboard.leaderboard||[];
+  if(!rows.length)return '<fieldset class="reveal"><legend>🏆 Neighbourhood leaderboard</legend><p class="hint" style="margin:0">Nobody\'s earned eco points in '+esc(leaderboard.suburb||me.suburb)+' yet — be the first!</p></fieldset>';
+  return '<fieldset class="reveal"><legend>🏆 Leaderboard — '+esc(leaderboard.suburb||me.suburb)+'</legend>'+
+  rows.map(function(r,i){
+    return '<div class="lbrow'+(r.mine?" mine":"")+'"><span class="lbrank">#'+(i+1)+'</span><span class="lbname">'+esc(r.handle)+(r.trusted?' <span class="trustchip">✓</span>':'')+'</span><span class="lbtier">'+r.tier.icon+'</span><span class="lbpts">'+r.ecoPoints+'</span></div>';
+  }).join("")+
+  '</fieldset>';
+}
 function viewProfile(){
   var rcptRows=receipts.map(function(r){
     return '<div class="rcpt"><div><span class="rid">'+esc(r.id)+'</span><br><span style="color:var(--soft)">'+esc(r.title)+' · '+fmtDT(r.at)+'</span></div>'+
@@ -387,7 +428,9 @@ function viewProfile(){
   '<div class="stat"><span class="n">'+me.truckSaved+'</span><span class="l">Truck-saved</span></div></div>'+
   (me.trusted?'<div class="truststamp">✓ Trusted neighbour</div>':'<p class="hint" style="margin-top:14px">3 completed handoffs unlocks a trust stamp on your tags.</p>')+'</div>'+
 
+  ecoPointsHtml()+
   impactHtml()+
+  leaderboardHtml()+
 
   '<fieldset class="reveal"><legend>Receipts</legend>'+
   (rcptRows?rcptRows:'<p class="hint" style="margin:0">No receipts yet — a receipt is generated automatically whenever a priced tag\'s handoff is confirmed.</p>')+
@@ -457,7 +500,7 @@ function bind(){
   var app=document.getElementById("app");
   app.onclick=function(e){
     var t=e.target.closest("[data-tab]");
-    if(t){tab=t.dataset.tab;if(tab==="alerts"){api("/notifications/read","POST").then(function(){unread=0;notifs.forEach(function(n){n.read=true;});render();});}render();return;}
+    if(t){tab=t.dataset.tab;if(tab==="alerts"){api("/notifications/read","POST").then(function(){unread=0;notifs.forEach(function(n){n.read=true;});render();});}if(tab==="profile"&&!leaderboard)loadLeaderboard();render();return;}
     var a=e.target.closest("[data-act]");
     if(a){act(a.dataset.act,a.dataset.id,a);return;}
   };
@@ -592,6 +635,14 @@ function act(action,id,el){
   if(action==="psearch"){
     var q=(document.getElementById("f-search")||{value:searchQ}).value||"";
     window.open(PSEARCH_URLS[el.dataset.pf]+encodeURIComponent(q),"_blank");return;}
+  if(action==="ebaysearch"){
+    var eq=((document.getElementById("f-search")||{value:searchQ}).value||"").trim();
+    if(!eq){toast("Type something to search first.",true);return;}
+    if(!ebayEnabled){toast("eBay search isn't connected yet — it needs a free eBay Developer Client ID + Secret.",true);return;}
+    ebayLoading=true;ebayResults=null;render();
+    api("/search/ebay?q="+encodeURIComponent(eq)).then(function(j){ebayLoading=false;ebayResults={q:eq,items:j.results||[]};render();})
+    .catch(function(e){ebayLoading=false;ebayResults={q:eq,error:e.message};render();});
+    return;}
   if(action==="cat"){keepDraftFields();draft.category=id;render();return;}
   if(action==="priced"){keepDraftFields();draft.priced=id==="1";render();return;}
   if(action==="delmedia"){keepDraftFields();draft.media.splice(parseInt(id,10),1);render();return;}
