@@ -1,0 +1,447 @@
+/* Kerbside API — zero-dependency Node serverless function (Vercel).
+   Data layer: Supabase (PostgREST, one generic table) when env vars are set,
+   otherwise an in-memory demo store (data may reset on cold starts). */
+"use strict";
+const crypto = require("crypto");
+
+const SECRET = process.env.SESSION_SECRET || "kerbside-pilot-secret-change-me";
+const SUPA_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+const HAS_DB = !!(SUPA_URL && SUPA_KEY);
+
+const CLAIM_HOLD_DAYS = 2;
+const FLAGS_TO_OBSERVE = 2;
+const INSTANT_OBSERVE_REASONS = ["Not relevant / inappropriate", "Unsafe item", "Suspected scam"];
+const MAX_MEDIA = 4;
+const MAX_IMAGE_B64 = 420 * 1024;      // ~300KB binary
+const MAX_VIDEO_B64 = 3.6 * 1024 * 1024; // ~2.6MB binary
+
+/* ---------------- Generic store ---------------- */
+// Demo store (per-instance memory)
+const g = globalThis;
+if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {} };
+if (!g.__ksMem.receipts) g.__ksMem.receipts = {};
+
+async function supa(method, path, body) {
+  const res = await fetch(SUPA_URL + "/rest/v1/" + path, {
+    method,
+    headers: {
+      apikey: SUPA_KEY,
+      Authorization: "Bearer " + SUPA_KEY,
+      "Content-Type": "application/json",
+      Prefer: method === "POST" ? "resolution=merge-duplicates,return=minimal" : "return=minimal",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error("DB error " + res.status + ": " + (await res.text()).slice(0, 300));
+  if (method === "GET") return res.json();
+  return null;
+}
+
+const db = {
+  async get(coll, id) {
+    if (!HAS_DB) return g.__ksMem[coll][id] || null;
+    const rows = await supa("GET", `ks_store?collection=eq.${coll}&id=eq.${encodeURIComponent(id)}&select=data`);
+    return rows.length ? rows[0].data : null;
+  },
+  async list(coll) {
+    if (!HAS_DB) return Object.values(g.__ksMem[coll]);
+    const rows = await supa("GET", `ks_store?collection=eq.${coll}&select=data&limit=1000`);
+    return rows.map((r) => r.data);
+  },
+  async put(coll, id, data) {
+    if (!HAS_DB) { g.__ksMem[coll][id] = data; return; }
+    await supa("POST", "ks_store?on_conflict=collection,id", [{ collection: coll, id, data }]);
+  },
+  async del(coll, id) {
+    if (!HAS_DB) { delete g.__ksMem[coll][id]; return; }
+    await supa("DELETE", `ks_store?collection=eq.${coll}&id=eq.${encodeURIComponent(id)}`);
+  },
+};
+
+/* ---------------- Helpers ---------------- */
+const uid = (p) => (p || "k") + Date.now().toString(36) + crypto.randomBytes(4).toString("hex");
+const now = () => Date.now();
+
+function hashPass(pw, salt) {
+  return crypto.scryptSync(String(pw), salt, 64).toString("hex");
+}
+function sign(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = crypto.createHmac("sha256", SECRET).update(body).digest("base64url");
+  return body + "." + sig;
+}
+function verify(token) {
+  if (!token || token.indexOf(".") < 0) return null;
+  const [body, sig] = token.split(".");
+  const good = crypto.createHmac("sha256", SECRET).update(body).digest("base64url");
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(good))) return null;
+  } catch { return null; }
+  try {
+    const p = JSON.parse(Buffer.from(body, "base64url").toString());
+    if (p.exp && p.exp < now()) return null;
+    return p;
+  } catch { return null; }
+}
+function getCookie(req, name) {
+  const c = req.headers.cookie || "";
+  const m = c.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+const ANIMALS = ["Wombat","Koala","Magpie","Echidna","Dingo","Possum","Kooka","Wallaby","Quokka","Ibis","Galah","Bilby"];
+function anonHandle() {
+  return "Kerb-" + ANIMALS[Math.floor(Math.random() * ANIMALS.length)] + "-" + (100 + Math.floor(Math.random() * 900));
+}
+function nextWeekdayOnOrAfter(fromTs, weekday) {
+  const d = new Date(fromTs);
+  d.setUTCHours(0, 0, 0, 0);
+  const diff = (weekday - d.getUTCDay() + 7) % 7;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.getTime();
+}
+function addHistory(item, label, alert) {
+  item.history = item.history || [];
+  item.history.push({ at: now(), label, alert: !!alert });
+}
+async function notify(userId, text, itemId) {
+  const id = uid("n");
+  await db.put("notifs", id, { id, userId, text, itemId: itemId || null, read: false, at: now() });
+}
+
+/* Public view of a user (never leaks email/phone/real identity) */
+function publicUser(u) {
+  return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
+}
+
+/* Status auto-transitions — the core business rule */
+async function resolveItem(item, ownerProfile) {
+  let changed = false;
+  if (item.status === "claimed" && item.claim && now() >= item.claim.expiresAt) {
+    addHistory(item, item.claim.byHandle + " didn't collect in time — claim expired, back on the kerb", true);
+    await notify(item.userId, "A claim on “" + item.title + "” expired — it's back up.", item.id);
+    if (item.claim.byId) await notify(item.claim.byId, "Your claim on “" + item.title + "” expired.", item.id);
+    item.claim = null;
+    item.status = "available";
+    changed = true;
+  }
+  if (item.status === "available") {
+    const wd = ownerProfile ? ownerProfile.pickupWeekday : 3;
+    const pickup = nextWeekdayOnOrAfter(item.postedAt + 86400000, wd);
+    if (now() >= pickup) {
+      item.status = "booked_for_truck";
+      addHistory(item, "Nobody claimed it in time — auto-booked for the council truck", true);
+      await notify(item.userId, "“" + item.title + "” wasn't claimed — it's booked for the truck.", item.id);
+      changed = true;
+    }
+  }
+  return changed;
+}
+function underObservation(item) {
+  if (item.status === "collected" || item.status === "collected_by_truck") return false;
+  const flags = item.flags || [];
+  if (flags.length >= FLAGS_TO_OBSERVE) return true;
+  return flags.some((f) => INSTANT_OBSERVE_REASONS.includes(f.reason));
+}
+
+/* ---------------- Request handling ---------------- */
+async function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (c) => {
+      data += c;
+      if (data.length > 8 * 1024 * 1024) { reject(new Error("Payload too large")); req.destroy(); }
+    });
+    req.on("end", () => {
+      try { resolve(data ? JSON.parse(data) : {}); } catch { resolve({}); }
+    });
+    req.on("error", reject);
+  });
+}
+function send(res, code, obj, cookie) {
+  const headers = { "Content-Type": "application/json" };
+  if (cookie) headers["Set-Cookie"] = cookie;
+  res.writeHead(code, headers);
+  res.end(JSON.stringify(obj));
+}
+function sessionCookie(token) {
+  return "ks_session=" + encodeURIComponent(token) + "; HttpOnly; Path=/; Max-Age=2592000; SameSite=Lax";
+}
+
+module.exports = async function handler(req, res) {
+  try {
+    const url = new URL(req.url, "http://x");
+    const path = url.pathname.replace(/^\/api/, "").replace(/\/$/, "") || "/";
+    const method = req.method;
+    const body = method === "POST" || method === "PUT" ? await readBody(req) : {};
+
+    // ---- auth-free routes ----
+    if (path === "/health") return send(res, 200, { ok: true, dbMode: HAS_DB ? "supabase" : "demo" });
+
+    if (path === "/signup" && method === "POST") {
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, { error: "Enter a valid email." });
+      if (password.length < 6) return send(res, 400, { error: "Password must be at least 6 characters." });
+      const users = await db.list("users");
+      if (users.some((u) => u.email === email)) return send(res, 409, { error: "That email is already registered — log in instead." });
+      const salt = crypto.randomBytes(16).toString("hex");
+      const user = {
+        id: uid("u"), email, salt, passHash: hashPass(password, salt),
+        handle: anonHandle(),
+        name: String(body.name || "").slice(0, 30) || null,
+        suburb: String(body.suburb || "Wentworthville").slice(0, 40),
+        pickupWeekday: Number.isInteger(body.pickupWeekday) ? Math.max(0, Math.min(6, body.pickupWeekday)) : 3,
+        handoffs: 0, truckSaved: 0, ratings: [],
+        platformTokens: {}, createdAt: now(),
+      };
+      await db.put("users", user.id, user);
+      const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
+      await notify(user.id, "Welcome to Kerbside! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
+      return send(res, 200, { ok: true, me: meView(user) }, sessionCookie(token));
+    }
+
+    if (path === "/login" && method === "POST") {
+      const email = String(body.email || "").trim().toLowerCase();
+      const users = await db.list("users");
+      const user = users.find((u) => u.email === email);
+      if (!user || hashPass(String(body.password || ""), user.salt) !== user.passHash)
+        return send(res, 401, { error: "Wrong email or password." });
+      const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
+      return send(res, 200, { ok: true, me: meView(user) }, sessionCookie(token));
+    }
+
+    if (path === "/logout" && method === "POST")
+      return send(res, 200, { ok: true }, "ks_session=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax");
+
+    // ---- authed routes ----
+    const sess = verify(getCookie(req, "ks_session"));
+    const me = sess ? await db.get("users", sess.uid) : null;
+    if (!me) return send(res, 401, { error: "Not logged in." });
+
+    if (path === "/me" && method === "GET") return send(res, 200, { me: meView(me), dbMode: HAS_DB ? "supabase" : "demo" });
+
+    if (path === "/profile" && method === "PUT") {
+      if (body.name !== undefined) me.name = String(body.name || "").slice(0, 30) || null;
+      if (body.suburb) me.suburb = String(body.suburb).slice(0, 40);
+      if (Number.isInteger(body.pickupWeekday)) me.pickupWeekday = Math.max(0, Math.min(6, body.pickupWeekday));
+      if (body.platformTokens && typeof body.platformTokens === "object") {
+        for (const k of ["Marketplace", "Gumtree", "Freecycle", "Olio"])
+          if (typeof body.platformTokens[k] === "string") me.platformTokens[k] = body.platformTokens[k].slice(0, 300);
+      }
+      await db.put("users", me.id, me);
+      return send(res, 200, { ok: true, me: meView(me) });
+    }
+
+    if (path === "/profile/newhandle" && method === "POST") {
+      let h = anonHandle();
+      while (h === me.handle) h = anonHandle();
+      me.handle = h;
+      await db.put("users", me.id, me);
+      await notify(me.id, "A new anonymous handle was generated for you: " + h + ". Your old posts now show this handle too.", null);
+      return send(res, 200, { ok: true, me: meView(me) });
+    }
+
+    if (path === "/items" && method === "GET") {
+      const [items, users] = await Promise.all([db.list("items"), db.list("users")]);
+      const byId = Object.fromEntries(users.map((u) => [u.id, u]));
+      for (const it of items) if (await resolveItem(it, byId[it.userId])) await db.put("items", it.id, it);
+      const out = items
+        .filter((it) => it.userId === me.id || !underObservation(it))
+        .map((it) => itemView(it, me, byId[it.userId]))
+        .sort((a, b) => b.postedAt - a.postedAt);
+      return send(res, 200, { items: out });
+    }
+
+    if (path === "/items" && method === "POST") {
+      const title = String(body.title || "").trim().slice(0, 70);
+      if (!title) return send(res, 400, { error: "Give it a short title." });
+      let media = Array.isArray(body.media) ? body.media.slice(0, MAX_MEDIA) : [];
+      for (const m of media) {
+        if (!m || (m.type !== "image" && m.type !== "video") || typeof m.data !== "string" || m.data.indexOf("data:") !== 0)
+          return send(res, 400, { error: "Bad media attachment." });
+        if (m.type === "image" && m.data.length > MAX_IMAGE_B64) return send(res, 400, { error: "A photo is too large — try again." });
+        if (m.type === "video" && m.data.length > MAX_VIDEO_B64) return send(res, 400, { error: "Videos must be under ~2.5MB for the pilot." });
+      }
+      const price = Math.max(0, Math.min(9999, Number(body.price) || 0));
+      const platforms = (Array.isArray(body.platforms) ? body.platforms : []).filter((p) => ["Marketplace", "Gumtree", "Freecycle", "Olio"].includes(p));
+      const item = {
+        id: uid("i"), userId: me.id,
+        title, desc: String(body.desc || "").slice(0, 240),
+        category: String(body.category || "other").slice(0, 20),
+        media, platforms, price,
+        postedAt: now(), status: "available", claim: null, flags: [], rating: null, history: [],
+      };
+      addHistory(item, "Posted to Kerbside by " + me.handle);
+      if (platforms.length) {
+        const withToken = platforms.filter((p) => me.platformTokens[p]);
+        const without = platforms.filter((p) => !me.platformTokens[p]);
+        if (withToken.length) addHistory(item, "Queued for auto-posting to " + withToken.join(", ") + " (token connected)");
+        if (without.length) addHistory(item, "Share-ready listing prepared for " + without.join(", ") + " — post with one tap from the item card");
+      }
+      if (price > 0) addHistory(item, "Listed at $" + price);
+      await db.put("items", item.id, item);
+      return send(res, 200, { ok: true, item: itemView(item, me, me) });
+    }
+
+    // /items/:id/<action>
+    const m = path.match(/^\/items\/([^/]+)(?:\/([a-z]+))?$/);
+    if (m) {
+      const item = await db.get("items", m[1]);
+      if (!item) return send(res, 404, { error: "That tag no longer exists." });
+      const owner = await db.get("users", item.userId);
+      if (await resolveItem(item, owner)) await db.put("items", item.id, item);
+      const action = m[2];
+
+      if (method === "DELETE" && !action) {
+        if (item.userId !== me.id) return send(res, 403, { error: "Not your tag." });
+        await db.del("items", item.id);
+        return send(res, 200, { ok: true });
+      }
+      if (method !== "POST") return send(res, 405, { error: "Bad method." });
+
+      if (action === "claim") {
+        if (item.userId === me.id) return send(res, 400, { error: "You can't claim your own tag." });
+        if (underObservation(item)) return send(res, 400, { error: "This tag is under observation and can't be claimed right now." });
+        if (item.status !== "available") {
+          const why = item.status === "claimed" ? "someone claimed it first" : item.status === "booked_for_truck" ? "it's already booked for the truck" : "it's no longer available";
+          addHistory(item, "A claim attempt failed — " + why, true);
+          await db.put("items", item.id, item);
+          return send(res, 409, { error: "Couldn't claim — " + why + "." });
+        }
+        item.status = "claimed";
+        item.claim = { byId: me.id, byHandle: me.handle, at: now(), expiresAt: now() + CLAIM_HOLD_DAYS * 86400000 };
+        addHistory(item, "Claimed by " + me.handle + " (collect within " + CLAIM_HOLD_DAYS + " days)");
+        await db.put("items", item.id, item);
+        await notify(item.userId, me.handle + " claimed “" + item.title + "” — arrange the handoff in the app.", item.id);
+        return send(res, 200, { ok: true });
+      }
+
+      if (action === "handoff") {
+        if (item.userId !== me.id) return send(res, 403, { error: "Only the poster can confirm the handoff." });
+        if (item.status !== "claimed") return send(res, 400, { error: "Nothing to hand off." });
+        item.status = "collected";
+        addHistory(item, "Handoff confirmed — the tag is torn off");
+        me.handoffs = (me.handoffs || 0) + 1;
+        let receipt = null;
+        if (item.price > 0 && item.claim) {
+          receipt = {
+            id: "KB-" + Date.now().toString(36).toUpperCase() + crypto.randomBytes(2).toString("hex").toUpperCase(),
+            itemId: item.id, title: item.title, amount: item.price,
+            posterId: me.id, posterHandle: me.handle,
+            claimerId: item.claim.byId || null, claimerHandle: item.claim.byHandle || null,
+            suburb: me.suburb, at: now(),
+            method: process.env.STRIPE_SECRET ? "Paid in-app (Stripe)" : "Paid at handoff — recorded by Kerbit",
+          };
+          await db.put("receipts", receipt.id, receipt);
+          addHistory(item, "Online receipt " + receipt.id + " generated for $" + item.price);
+          if (item.claim.byId) await notify(item.claim.byId, "Receipt " + receipt.id + " for “" + item.title + "” ($" + item.price + ") is in your Profile.", item.id);
+          await notify(me.id, "Receipt " + receipt.id + " for “" + item.title + "” ($" + item.price + ") is in your Profile.", item.id);
+        }
+        await db.put("users", me.id, me);
+        await db.put("items", item.id, item);
+        if (item.claim && item.claim.byId) await notify(item.claim.byId, "Handoff of “" + item.title + "” confirmed. You can rate it now.", item.id);
+        return send(res, 200, { ok: true, receipt });
+      }
+
+      if (action === "truckdone") {
+        if (item.userId !== me.id) return send(res, 403, { error: "Not your tag." });
+        if (item.status !== "booked_for_truck") return send(res, 400, { error: "This tag isn't booked for the truck." });
+        item.status = "collected_by_truck";
+        addHistory(item, "Collected by the council truck");
+        me.truckSaved = (me.truckSaved || 0) + 1;
+        await db.put("users", me.id, me);
+        await db.put("items", item.id, item);
+        return send(res, 200, { ok: true });
+      }
+
+      if (action === "flag") {
+        const reason = String(body.reason || "Other").slice(0, 60);
+        item.flags = item.flags || [];
+        if (item.flags.some((f) => f.byId === me.id)) return send(res, 400, { error: "You've already flagged this tag." });
+        item.flags.push({ byId: me.id, reason, at: now() });
+        addHistory(item, "Flagged: " + reason, true);
+        const obs = underObservation(item);
+        if (obs) {
+          addHistory(item, "Moved to observation — hidden from the feed pending review", true);
+          await notify(item.userId, "“" + item.title + "” was flagged (" + reason + ") and moved to observation. Fix the listing or contact support.", item.id);
+        } else {
+          await notify(item.userId, "“" + item.title + "” received a flag: " + reason, item.id);
+        }
+        await db.put("items", item.id, item);
+        return send(res, 200, { ok: true, observation: obs });
+      }
+
+      if (action === "rate") {
+        const r = Math.round(Number(body.rating));
+        if (!(r >= 1 && r <= 5)) return send(res, 400, { error: "Rate 1 to 5." });
+        const isPoster = item.userId === me.id;
+        const isClaimer = item.claim && item.claim.byId === me.id;
+        if (!isPoster && !isClaimer) return send(res, 403, { error: "Only the two sides of the handoff can rate it." });
+        if (item.status !== "collected" && item.status !== "collected_by_truck") return send(res, 400, { error: "Rate after the handoff is done." });
+        item.rating = r;
+        addHistory(item, "Handoff rated " + r + "/5 by " + me.handle);
+        await db.put("items", item.id, item);
+        const other = isPoster ? (item.claim && item.claim.byId) : item.userId;
+        if (other) {
+          const ou = await db.get("users", other);
+          if (ou) { ou.ratings = ou.ratings || []; ou.ratings.push(r); await db.put("users", other, ou); }
+        }
+        return send(res, 200, { ok: true });
+      }
+      return send(res, 404, { error: "Unknown action." });
+    }
+
+    if (path === "/receipts" && method === "GET") {
+      const all = await db.list("receipts");
+      const mine = all.filter((r) => r.posterId === me.id || r.claimerId === me.id).sort((a, b) => b.at - a.at);
+      return send(res, 200, { receipts: mine });
+    }
+
+    if (path === "/notifications" && method === "GET") {
+      const all = await db.list("notifs");
+      const mine = all.filter((n) => n.userId === me.id).sort((a, b) => b.at - a.at).slice(0, 50);
+      return send(res, 200, { notifications: mine, unread: mine.filter((n) => !n.read).length });
+    }
+    if (path === "/notifications/read" && method === "POST") {
+      const all = await db.list("notifs");
+      for (const n of all) if (n.userId === me.id && !n.read) { n.read = true; await db.put("notifs", n.id, n); }
+      return send(res, 200, { ok: true });
+    }
+
+    return send(res, 404, { error: "Not found." });
+  } catch (err) {
+    console.error("Kerbside API error:", err);
+    return send(res, 500, { error: "Something went wrong on the server — try again." });
+  }
+};
+
+/* ---------------- View shapers ---------------- */
+function meView(u) {
+  const avg = u.ratings && u.ratings.length ? u.ratings.reduce((a, b) => a + b, 0) / u.ratings.length : null;
+  return {
+    id: u.id, email: u.email, handle: u.handle, name: u.name, suburb: u.suburb,
+    pickupWeekday: u.pickupWeekday, handoffs: u.handoffs || 0, truckSaved: u.truckSaved || 0,
+    trusted: (u.handoffs || 0) >= 3, avgRating: avg,
+    platformsConnected: Object.keys(u.platformTokens || {}).filter((k) => u.platformTokens[k]),
+  };
+}
+function itemView(it, me, owner) {
+  const mine = it.userId === me.id;
+  const ownerWd = owner ? owner.pickupWeekday : 3;
+  return {
+    id: it.id, title: it.title, desc: it.desc, category: it.category,
+    media: it.media || [], platforms: it.platforms || [], price: it.price || 0,
+    postedAt: it.postedAt, status: it.status,
+    pickupAt: nextWeekdayOnOrAfter(it.postedAt + 86400000, ownerWd),
+    mine,
+    poster: owner ? publicUser(owner) : { handle: "Neighbour", suburb: "", trusted: false },
+    claim: it.claim ? { byHandle: it.claim.byHandle, expiresAt: it.claim.expiresAt, byMe: it.claim.byId === me.id } : null,
+    flags: (it.flags || []).length,
+    observation: underObservation(it),
+    flaggedByMe: (it.flags || []).some((f) => f.byId === me.id),
+    rating: it.rating,
+    history: mine || (it.claim && it.claim.byId === me.id) ? it.history : (it.history || []).filter((h) => !h.alert),
+  };
+}
