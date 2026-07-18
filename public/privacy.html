@@ -1,24 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kerbit — Privacy Policy</title><link rel="icon" type="image/svg+xml" href="/logo.svg">
-<style>body{font-family:Georgia,serif;background:#E7DFC6;color:#262420;max-width:680px;margin:auto;padding:28px;line-height:1.6}
-h1{color:#153F38}h2{color:#1E5C52;font-size:17px}a{color:#A93226}.card{background:#FBF8EF;border:2px solid #262420;border-radius:12px;padding:26px}</style></head>
-<body><div class="card">
-<h1>🏷️ Kerbit — Privacy Policy</h1>
-<p><em>Last updated: 16 July 2026 · Applies Australia-wide</em></p>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kerbit — Privacy Policy</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("kerbit-theme")||"light");}catch(e){}</script>
+<style>
+body{padding:0}
+.legalpage{max-width:680px;margin:0 auto;padding:36px 20px 60px}
+.legalpage .back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--soft);text-decoration:none;margin-bottom:20px}
+.legalpage .back:hover{color:var(--teal)}
+.legalpage .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:32px;box-shadow:var(--shadow)}
+.legalpage h1{font-family:'Outfit',sans-serif;font-size:26px;font-weight:800;letter-spacing:-.5px;margin:0 0 4px}
+.legalpage .meta{font-size:12px;color:var(--faint);margin-bottom:26px}
+.legalpage h2{font-family:'Outfit',sans-serif;font-size:14.5px;font-weight:700;color:var(--teal);margin:24px 0 8px}
+.legalpage h2:first-of-type{margin-top:0}
+.legalpage p{font-size:13.5px;line-height:1.65;color:var(--soft);margin:0 0 4px}
+.legalpage code{font-family:'JetBrains Mono',monospace;background:var(--card2);padding:1px 6px;border-radius:5px;font-size:12.5px;color:var(--ink)}
+.legalpage strong{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="legalpage">
+<a class="back" href="/">← Back to Kerbit</a>
+<div class="card">
+<h1>🏷️ Privacy Policy</h1>
+<p class="meta">Last updated: 19 July 2026 · Applies Australia-wide</p>
 
 <h2>Who we are</h2>
 <p>Kerbit is a listing and coordination service that helps Australians give away, sell, or dispose of unwanted household items before their council hard-rubbish collection day.</p>
 
 <h2>What we collect</h2>
-<p>Email address (login only), a password (stored as a salted hash — we can never read it), your suburb, your council pickup weekday, the items you post (title, description, photos/videos you choose to upload), and activity records (claims, handoffs, ratings, flags, receipts).</p>
+<p>Email address (login only), a password (stored as a salted hash — we can never read it), your suburb, your council pickup weekday, the items you post (title, description, photos/videos you choose to upload), and activity records (claims, handoffs, ratings, flags, receipts, eco points).</p>
+
+<h2>Signing in with Google</h2>
+<p>If you choose "Continue with Google," Google shares your email and name with us so we can create or match your account. We verify Google's token directly — we never see or store your Google password.</p>
 
 <h2>What other users see</h2>
-<p>Only an automatically generated anonymous handle (e.g. <code>Kerb-Wombat-482</code>), your suburb, and your posted items. Your email, name, and any real identity are never shown to other users. Kerbit never asks for your phone number. Handles are assigned by the system and can be regenerated at any time; users can never choose their own handle.</p>
+<p>Only an automatically generated anonymous handle (e.g. <code>Kerb-Wombat-482</code>), your suburb, your posted items, and your eco points (shown on a suburb leaderboard). Your email, name, and any real identity are never shown to other users. Kerbit never asks for your phone number. Handles are assigned by the system and can be regenerated at any time; users can never choose their own handle.</p>
+
+<h2>Searching eBay from inside Kerbit</h2>
+<p>When you tap "eBay AU" to search elsewhere, the text you typed is sent to eBay's public Browse API to fetch results shown inside the app. No account information is sent — only the search text.</p>
 
 <h2>What we never do</h2>
-<p>We do not sell your data, do not show advertising, do not track your location, and do not share your details with the cross-posting platforms — cross-posted listings identify you only by your anonymous handle and a link back to Kerbit.</p>
+<p>We do not sell your data, do not show advertising, do not track your location without your action (the "Locate" button only runs when you tap it), and do not share your details with cross-posting platforms — cross-posted listings identify you only by your anonymous handle and a link back to Kerbit.</p>
 
 <h2>Payments and receipts</h2>
 <p>When a priced item's handoff is confirmed, Kerbit generates an online receipt identifying both parties by their anonymous handles only. If card payments are enabled, they are processed by Stripe — Kerbit never sees or stores card numbers.</p>
@@ -31,4 +60,7 @@ h1{color:#153F38}h2{color:#1E5C52;font-size:17px}a{color:#A93226}.card{backgroun
 
 <h2>Contact</h2>
 <p>Privacy questions or deletion requests: <strong>riteeshtirumalaraju@gmail.com</strong></p>
-</div></body></html>
+</div>
+</div>
+</body>
+</html>

@@ -219,6 +219,13 @@ async function resolveItem(item, ownerProfile) {
   if (item.status === "available") {
     const wd = ownerProfile ? ownerProfile.pickupWeekday : 3;
     const pickup = nextWeekdayOnOrAfter(item.postedAt + 86400000, wd);
+    const msToPickup = pickup - now();
+    if (!item.truckReminderSent && msToPickup > 0 && msToPickup <= 86400000) {
+      item.truckReminderSent = true;
+      addHistory(item, "Reminder sent — truck day is within 24 hours");
+      await notify(item.userId, "⏰ Truck day for “" + item.title + "” is within 24 hours — still time for a neighbour to claim it, or put it out for the council.", item.id);
+      changed = true;
+    }
     if (now() >= pickup) {
       item.status = "booked_for_truck";
       addHistory(item, "Nobody claimed it in time — auto-booked for the council truck", true);

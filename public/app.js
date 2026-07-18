@@ -34,6 +34,7 @@ function api(path,method,body){
 function boot(){
   applyTheme();
   bindModalOnce();
+  window.addEventListener("resize",function(){if(me)positionDockLiquid();});
   api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
 }
@@ -485,14 +486,26 @@ function render(){
   '</aside>';
   var mtop='<div class="mtop"><img src="/logo.svg" alt=""><span class="nm">'+APP+'</span>'+bell+themesw+'</div>';
   var dtop='<div class="dtopbar"><div class="right">'+bell+themesw+'</div></div>';
-  var banner='<div class="banner reveal"><span class="lbl">Next truck day</span><span class="cnt">'+WD[me.pickupWeekday].slice(0,3)+' · '+lbl+'</span></div>';
-  var dockm='<nav class="dock-mobile">'+navItems().map(function(n){
+  var urgent=d<=1;
+  var banner='<div class="banner reveal'+(urgent?" urgent":"")+'"><span class="lbl">Next truck day</span><span class="cnt">'+WD[me.pickupWeekday].slice(0,3)+' · '+lbl+'</span></div>';
+  var dockm='<nav class="dock-mobile"><div class="dock-liquid" id="dockLiquidM"></div>'+navItems().map(function(n){
     return '<button data-tab="'+n[0]+'" class="'+(tab===n[0]?"on":"")+(n[0]==="post"?" post":"")+'"><span class="ic">'+n[1]+'</span>'+(n[0]==="post"?"":n[2])+
     (n[0]==="alerts"?'<span class="dock-badge js-badge" style="display:'+(unread?"":"none")+'">'+unread+'</span>':"")+'</button>';
   }).join("")+'</nav>';
   app.innerHTML='<div class="shell">'+dock+'<div class="content">'+mtop+dtop+banner+'<main id="main">'+mainHtml+'</main></div></div>'+dockm;
   bind();
   initScrollAnim();
+  positionDockLiquid();
+}
+function positionDockLiquid(){
+  var nav=document.querySelector(".dock-mobile"),ind=document.getElementById("dockLiquidM");
+  if(!nav||!ind)return;
+  var active=nav.querySelector("button.on:not(.post)");
+  if(!active){ind.style.opacity=0;return;}
+  var navRect=nav.getBoundingClientRect(),r=active.getBoundingClientRect();
+  ind.style.opacity=1;
+  ind.style.left=(r.left-navRect.left)+"px";
+  ind.style.width=r.width+"px";
 }
 
 /* ---------- events ---------- */
