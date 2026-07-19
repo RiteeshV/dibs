@@ -2,26 +2,56 @@
 "use strict";
 var APP="Kerbit";
 var TAGLINE="Kerb it. Claim it. Or the truck takes it.";
-/* 4th field: 1 = "kerb" item (free-giveaway / council-truck-day mechanic applies), 0 = plain marketplace listing (no truck deadline — vehicles, property, jobs, services aren't council-collected) */
-var CATS=[["furniture","Furniture","🪑",1],["electronics","Electronics","🔌",1],["clothing","Clothing","👕",1],["books","Books","📚",1],["kitchen","Kitchen","🍳",1],["toys","Toys","🧸",1],["garden","Garden","🪴",1],["sports","Sports & Outdoors","⚽",1],["baby","Baby & Kids","🍼",1],["pets","Pet Supplies","🐾",1],["tools","Tools & DIY","🔧",1],["music","Musical Instruments","🎸",1],["hobbies","Hobbies & Craft","🎨",1],["vehicles","Vehicles","🚗",0],["property","Property","🏠",0],["jobs","Jobs","💼",0],["services","Services","🛠️",0],["other","Other","📦",1]];
+/* Fields: [key, label, icon, kerb(1=free-giveaway/truck-day mechanic applies, 0=plain listing), primary(1=shown by default, 0=behind "More")]
+   Mirrors the categories Australians expect from Facebook Marketplace/Gumtree, unified into one app. */
+var CATS=[
+  ["vehicles","Vehicles","🚗",0,1],
+  ["property_rent","Property for rent","🏠",0,1],
+  ["property_sale","Property for sale","🏡",0,1],
+  ["furniture","Furniture","🪑",1,1],
+  ["electronics","Electronics","🔌",1,1],
+  ["clothing","Clothing","👕",1,1],
+  ["family","Family","👨‍👩‍👧",1,1],
+  ["classifieds","Classifieds","📋",0,1],
+  ["jobs","Jobs","💼",0,0],
+  ["services","Services","🛠️",0,0],
+  ["entertainment","Entertainment","🎬",1,0],
+  ["books","Books","📚",1,0],
+  ["kitchen","Kitchen","🍳",1,0],
+  ["toys","Toys & Games","🧸",1,0],
+  ["garden","Garden & Outdoors","🪴",1,0],
+  ["sports","Sporting Goods","⚽",1,0],
+  ["pets","Pet Supplies","🐾",1,0],
+  ["homegoods","Home Goods","🛋️",1,0],
+  ["homeimprove","Home Improvement Supplies","🔧",1,0],
+  ["music","Musical Instruments","🎸",1,0],
+  ["office","Office Supplies","🖇️",1,0],
+  ["hobbies","Hobbies & Craft","🎨",1,0],
+  ["other","Other","📦",1,0]
+];
 function catKerb(catKey){var c=CATS.filter(function(x){return x[0]===catKey;})[0];return c?!!c[3]:true;}
 var CAT_SYNONYMS={
   vehicles:["car","cars","vehicle","vehicles","ute","suv","4wd","motorbike","motorcycle","van","auto","hatch","sedan","wagon"],
-  property:["house","houses","apartment","unit","room","rent","rental","property","land","flat","granny","share"],
+  property_rent:["rent","rental","lease","room","granny","share","tenant"],
+  property_sale:["house","houses","apartment","unit","property","land","flat","buy"],
+  classifieds:["classified","classifieds","notice","swap","trade"],
   jobs:["job","jobs","work","hiring","vacancy","career","casual","fulltime","parttime"],
   services:["service","services","cleaner","tutor","tutoring","mechanic","plumber","handyman","gardener","removalist"],
   furniture:["couch","sofa","chair","table","desk","bed","furniture","wardrobe","drawer","shelf"],
-  electronics:["tv","laptop","phone","electronics","computer","monitor","console","camera","fridge","washer"],
+  electronics:["tv","laptop","phone","electronics","computer","monitor","console","camera"],
   clothing:["clothes","clothing","shirt","jacket","shoes","dress","jeans"],
+  family:["baby","kids","pram","stroller","cot","highchair","family"],
+  entertainment:["movie","movies","dvd","game","games","console","concert","ticket","tickets"],
   books:["book","books","novel","textbook","magazine"],
-  kitchen:["kitchen","microwave","cookware","utensils","blender","kettle"],
+  kitchen:["kitchen","microwave","cookware","utensils","blender","kettle","fridge","washer"],
   toys:["toy","toys","lego","boardgame"],
   garden:["garden","plant","plants","pot","mower","outdoor","planter"],
   sports:["sports","bike","bicycle","gym","ball","surfboard","skateboard"],
-  baby:["baby","kids","pram","stroller","cot","highchair"],
   pets:["pet","pets","dog","cat","aquarium","cage","kennel"],
-  tools:["tool","tools","drill","saw","diy","ladder"],
+  homegoods:["homewares","decor","rug","curtain","cushion"],
+  homeimprove:["tool","tools","drill","saw","diy","ladder","paint","renovation"],
   music:["guitar","piano","music","drum","keyboard","amp"],
+  office:["printer","stationery","office","folder","binder"],
   hobbies:["hobby","craft","art","paint","collectible","puzzle"]
 };
 function parseSmartQuery(q){
@@ -40,10 +70,55 @@ var FLAG_REASONS=["Not relevant / inappropriate","Not as described","Suspected s
 var WD=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 var SHARE_URLS={Marketplace:"https://www.facebook.com/marketplace/create/item",Gumtree:"https://www.gumtree.com.au/p-post-ad.html",Freecycle:"https://www.freecycle.org/",Olio:"https://olioapp.com/"};
 var PSEARCH_URLS={Marketplace:"https://www.facebook.com/marketplace/search/?query=",Gumtree:"https://www.gumtree.com.au/s-search.html?search=","eBay AU":"https://www.ebay.com.au/sch/i.html?_nkw="};
+var EXTRA_PSEARCH_URLS={"Indeed AU":"https://au.indeed.com/jobs?q="};
+var CAT_NOUN={vehicles:"car",property_rent:"rental",property_sale:"property",jobs:"job",services:"service",classifieds:"listing"};
+var NO_EBAY_CATS=["property_rent","property_sale","jobs","services","classifieds"];
+function psearchSites(activeCat){
+  var sites={};for(var k in PSEARCH_URLS)sites[k]=PSEARCH_URLS[k];
+  if(activeCat&&NO_EBAY_CATS.indexOf(activeCat)>-1)delete sites["eBay AU"];
+  if(activeCat==="jobs")sites["Indeed AU"]=EXTRA_PSEARCH_URLS["Indeed AU"];
+  return sites;
+}
+var SUBURB_EXAMPLES=["Wentworthville","Bondi","St Kilda","Fremantle","Toowong","Glenelg","Fortitude Valley","New Farm","Subiaco","Northcote","Prahran","Coogee","Newtown","Fitzroy","Semaphore","Kelvin Grove"];
+var suburbExample=SUBURB_EXAMPLES[Math.floor(Math.random()*SUBURB_EXAMPLES.length)];
+var AU_STATES=[["NSW","New South Wales"],["VIC","Victoria"],["QLD","Queensland"],["WA","Western Australia"],["SA","South Australia"],["TAS","Tasmania"],["ACT","Australian Capital Territory"],["NT","Northern Territory"]];
+var HERO_SLIDES=[
+  {img:"https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=1600&q=70&auto=format&fit=crop",eyebrow:"Vehicles",headline:"Find your next ride",cat:"vehicles"},
+  {img:"https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1600&q=70&auto=format&fit=crop",eyebrow:"Furniture",headline:"Give it a new home",cat:"furniture"},
+  {img:"https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1600&q=70&auto=format&fit=crop",eyebrow:"Property",headline:"A room, a rental, a start",cat:"property_rent"},
+  {img:"https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=1600&q=70&auto=format&fit=crop",eyebrow:"Garden & Outdoors",headline:"Grow something good",cat:"garden"},
+  {img:"https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&q=70&auto=format&fit=crop",eyebrow:"Everything else",headline:"One app, every kerb",cat:"all"}
+];
+var heroIdx=0,heroTimer=null;
+function heroHtml(){
+  var s=HERO_SLIDES[heroIdx%HERO_SLIDES.length];
+  return '<div class="hero reveal" id="heroBox" style="background-image:linear-gradient(180deg,rgba(10,20,16,.05) 40%,rgba(10,20,16,.82)),url(&quot;'+s.img+'&quot;)" data-act="herogo" data-id="'+esc(s.cat)+'">'+
+    '<div class="heroin">'+
+      '<span class="heroeyebrow">'+esc(s.eyebrow)+'</span>'+
+      '<h1 class="heroh">'+esc(s.headline)+'</h1>'+
+      '<button type="button" class="pill pri" data-act="herogo" data-id="'+esc(s.cat)+'">Browse '+esc(s.eyebrow)+' →</button>'+
+    '</div>'+
+    '<div class="herodots">'+HERO_SLIDES.map(function(x,i){return '<span class="hdot'+(i===heroIdx?" on":"")+'" data-act="herodot" data-id="'+i+'"></span>';}).join("")+'</div>'+
+  '</div>';
+}
+function swapHero(){
+  var h=document.getElementById("heroBox");
+  if(!h)return;
+  h.outerHTML=heroHtml();
+  var nh=document.getElementById("heroBox");
+  if(nh)nh.classList.add("in");
+}
+function startHeroRotation(){
+  clearInterval(heroTimer);
+  heroTimer=setInterval(function(){
+    heroIdx=(heroIdx+1)%HERO_SLIDES.length;
+    if(tab==="feed")swapHero();
+  },5000);
+}
 
-var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="login", dbMode="demo", feedScope="suburb", searchQ="", catFilter="all";
+var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="login", dbMode="demo", feedScope="suburb", searchQ="", catFilter="all", showAllCats=false;
 var googleClientId=null, ebayEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
-var draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false};
+var draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false,concierge:false};
 var modalItemId=null, modalMiniMode=null, modalMiniId=null;
 var io=null;
 
@@ -77,6 +152,7 @@ function refresh(){
 }
 var pollTimer=null;
 function startPolling(){
+  startHeroRotation();
   clearInterval(pollTimer);
   pollTimer=setInterval(function(){
     if(!me)return;
@@ -170,7 +246,8 @@ function viewAuthSignup(){
     '<form id="authForm">'+
     '<div class="field"><label for="a-email">Email</label><input id="a-email" type="email" required autocomplete="email"></div>'+
     '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" required minlength="6" autocomplete="new-password"></div>'+
-    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. Wentworthville" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
+    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. '+esc(suburbExample)+'" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
+    '<div class="field"><label for="a-state">State</label><select id="a-state">'+AU_STATES.map(function(s){return '<option value="'+s[0]+'">'+s[1]+' ('+s[0]+')</option>';}).join("")+'</select></div>'+
     '<div class="field"><label for="a-day">Council truck day</label><select id="a-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===3?" selected":"")+'>'+w+'</option>';}).join("")+'</select></div>'+
     '<button type="submit" class="pill pri block">Create account</button>'+
     '</form>'+
@@ -212,10 +289,11 @@ function mediaThumb(it){
   return '<div class="emoji">'+(c?c[2]:"📦")+'</div>';
 }
 function stubFor(it){
-  if(it.observation)return 'Hidden while '+it.flags+' flag'+(it.flags>1?"s are":" is")+' reviewed';
+  var concierge=it.mine&&it.concierge&&it.concierge.requested?'🚚 Kerbit Concierge requested — ':'';
+  if(it.observation)return concierge+'Hidden while '+it.flags+' flag'+(it.flags>1?"s are":" is")+' reviewed';
   if(it.status==="available"){
-    if(!catKerb(it.category))return 'Listed '+fmtD(it.postedAt)+' — message the poster to arrange a time';
-    var d=Math.max(daysTo(it.pickupAt),0);return 'Unclaimed after <span class="num">'+d+'d</span> → auto-booked for the truck';
+    if(!catKerb(it.category))return concierge+'Listed '+fmtD(it.postedAt)+' — message the poster to arrange a time';
+    var d=Math.max(daysTo(it.pickupAt),0);return concierge+'Unclaimed after <span class="num">'+d+'d</span> → auto-booked for the truck';
   }
   if(it.status==="claimed"&&it.claim)return esc(it.claim.byHandle)+' has <span class="num">'+Math.max(daysTo(it.claim.expiresAt),0)+'d</span> to collect — or it goes back up';
   if(it.status==="booked_for_truck")return 'Nobody claimed it — booked for the council collection';
@@ -341,7 +419,8 @@ function rateModalHtml(){
 function feedItems(){
   var act=items.filter(function(i){return !i.mine&&(i.status==="available"||i.status==="claimed"||i.status==="booked_for_truck")&&!i.observation;});
   if(feedScope==="suburb")act=act.filter(function(i){return (i.poster.suburb||"").toLowerCase()===(me.suburb||"").toLowerCase();});
-  if(catFilter!=="all")act=act.filter(function(i){return i.category===catFilter;});
+  if(catFilter==="free")act=act.filter(function(i){return i.price===0;});
+  else if(catFilter!=="all")act=act.filter(function(i){return i.category===catFilter;});
   if(searchQ){
     var sp=parseSmartQuery(searchQ);
     act=act.filter(function(i){
@@ -369,17 +448,25 @@ function viewFeed(){
     '<button class="locchip'+(feedScope==="suburb"?" on":"")+'" data-act="scope" data-id="suburb">📍 '+esc(me.suburb)+'</button>'+
     '<button class="locchip'+(feedScope==="all"?" on":"")+'" data-act="scope" data-id="all">🇦🇺 All Australia</button>'+
   '</div>';
+  var catList=showAllCats?CATS:CATS.filter(function(c){return c[4];});
   var catrail='<div class="catrail reveal">'+
     '<button class="cattile'+(catFilter==="all"?" on":"")+'" data-act="catf" data-id="all"><span class="circ">🏷️</span><span class="lbl">All</span></button>'+
-    CATS.map(function(c){return '<button class="cattile'+(catFilter===c[0]?" on":"")+'" data-act="catf" data-id="'+c[0]+'"><span class="circ">'+c[2]+'</span><span class="lbl">'+c[1]+'</span></button>';}).join("")+
+    '<button class="cattile'+(catFilter==="free"?" on":"")+'" data-act="catf" data-id="free"><span class="circ">🎁</span><span class="lbl">Free stuff</span></button>'+
+    catList.map(function(c){return '<button class="cattile'+(catFilter===c[0]?" on":"")+'" data-act="catf" data-id="'+c[0]+'"><span class="circ">'+c[2]+'</span><span class="lbl">'+c[1]+'</span></button>';}).join("")+
+    '<button class="cattile" data-act="togglecats"><span class="circ">'+(showAllCats?"–":"+")+'</span><span class="lbl">'+(showAllCats?"Less":"More")+'</span></button>'+
   '</div>';
-  var psearch='<div class="psearch reveal">Can\'t find it on '+APP+'? Search the same thing everywhere:'+
-    '<div class="pbtns">'+Object.keys(PSEARCH_URLS).map(function(p){
+  var searchSp=searchQ?parseSmartQuery(searchQ):null;
+  var activeCat=(searchSp&&searchSp.catGuess)||(catFilter!=="all"&&catFilter!=="free"?catFilter:null);
+  var noun=activeCat&&CAT_NOUN[activeCat];
+  var psearchHeading=noun?"Can't find that "+noun+" on "+APP+"? Search the same thing everywhere:":"Can't find it on "+APP+"? Search the same thing everywhere:";
+  var sites=psearchSites(activeCat);
+  var psearch='<div class="psearch reveal">'+esc(psearchHeading)+
+    '<div class="pbtns">'+Object.keys(sites).map(function(p){
       return p==="eBay AU"
         ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU 🔎</button>'
         :'<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
     }).join("")+'</div></div>';
-  return demo+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
+  return demo+heroHtml()+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
 }
 function ebayPanelHtml(){
   if(ebayLoading)return '<div class="psearch reveal"><p class="hint" style="margin:0">🔎 Searching eBay AU…</p></div>';
@@ -408,6 +495,10 @@ function viewPost(){
   '<button type="button" class="pill'+(draft.priced?" pri":"")+'" data-act="priced" data-id="1">Priced</button>'+
   (draft.priced?'<input id="f-price" type="number" min="1" max="2000000" placeholder="$" style="max-width:110px" value="'+esc(draft.price||"")+'">':"")+'</div>'+
   '<p class="hint">Priced tags get an official online receipt when the handoff is confirmed.</p></div>'+
+  (catKerb(draft.category)?'<div class="field"><label>Council pickup help</label>'+
+  '<button type="button" class="pill'+(draft.concierge?" pri":"")+'" data-act="concierge" data-id="'+(draft.concierge?"0":"1")+'">🚚 '+(draft.concierge?"Kerbit Concierge requested":"Ask Kerbit Concierge to coordinate pickup")+'</button>'+
+  (draft.concierge?'<input id="f-concierge-addr" placeholder="Street address (private — never shown to other users)" maxlength="200" style="margin-top:8px;width:100%" value="'+esc(draft.conciergeAddress||"")+'">':"")+
+  '<p class="hint">Optional. We flag your listing for manual council-pickup coordination and keep your address private — it is never shown to other users, only used to help arrange collection.</p></div>':"")+
   '<div class="field"><label>Also cross-post to</label><div class="pchecks">'+PLATFORMS.map(function(p){
     var on=draft.platforms.indexOf(p)>-1;var tok=me.platformsConnected.indexOf(p)>-1;
     return '<label><input type="checkbox" data-pf="'+p+'"'+(on?" checked":"")+'> '+p+(tok?' <span class="trustchip">●</span>':'')+'</label>';}).join("")+
@@ -490,6 +581,7 @@ function viewProfile(){
   '<fieldset class="reveal"><legend>Your details</legend>'+
   '<div class="field"><label for="p-name">Private name (optional)</label><input id="p-name" maxlength="30" value="'+esc(me.name||"")+'"></div>'+
   '<div class="field"><label for="p-suburb">Suburb</label><div class="field-inline"><input id="p-suburb" maxlength="40" value="'+esc(me.suburb)+'"><button type="button" class="locbtn" data-act="locate" data-target="p-suburb">📍 Locate</button></div></div>'+
+  '<div class="field"><label for="p-state">State</label><select id="p-state">'+AU_STATES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===me.state?" selected":"")+'>'+s[1]+' ('+s[0]+')</option>';}).join("")+'</select></div>'+
   '<div class="field"><label for="p-day">Council truck day</label><select id="p-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===me.pickupWeekday?" selected":"")+'>'+w+'</option>';}).join("")+'</select>'+
   '<p class="hint">Drives the countdown and the auto-book-for-truck rule. Works for any suburb in Australia.</p></div>'+
   '<button class="pill pri" data-act="save-profile">Save details</button></fieldset>'+
@@ -579,7 +671,7 @@ function bind(){
   if(af)af.onsubmit=function(e){
     e.preventDefault();
     var body={email:document.getElementById("a-email").value,password:document.getElementById("a-pass").value};
-    if(authMode==="signup"){body.suburb=document.getElementById("a-suburb").value||"My suburb";body.pickupWeekday=parseInt(document.getElementById("a-day").value,10);}
+    if(authMode==="signup"){body.suburb=document.getElementById("a-suburb").value||"My suburb";body.state=document.getElementById("a-state").value;body.pickupWeekday=parseInt(document.getElementById("a-day").value,10);}
     api("/"+authMode,"POST",body).then(function(j){me=j.me;toast(authMode==="signup"?"Welcome! You appear as "+me.handle:"Welcome back, "+me.handle);refresh();startPolling();}).catch(function(err){toast(err.message,true);});
   };
   var pf=document.getElementById("postForm");
@@ -589,9 +681,12 @@ function bind(){
     if(!title){toast("Give it a short title first.",true);return;}
     var price=0;
     if(draft.priced){price=parseFloat((document.getElementById("f-price")||{}).value);if(isNaN(price)||price<1){toast("Enter a price of at least $1, or switch to Free.",true);return;}}
-    api("/items","POST",{title:title,desc:document.getElementById("f-desc").value.trim(),category:draft.category,price:price,platforms:draft.platforms,media:draft.media})
+    var concierge=draft.concierge&&catKerb(draft.category);
+    var conciergeAddress=concierge?((document.getElementById("f-concierge-addr")||{}).value||"").trim():"";
+    if(concierge&&!conciergeAddress){toast("Add a street address so Kerbit Concierge can coordinate pickup, or turn it off.",true);return;}
+    api("/items","POST",{title:title,desc:document.getElementById("f-desc").value.trim(),category:draft.category,price:price,platforms:draft.platforms,media:draft.media,concierge:concierge,conciergeAddress:conciergeAddress})
     .then(function(j){
-      draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false};
+      draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false,concierge:false};
       if(j.item&&j.item.platforms.length){
         var auto=j.item.platforms.filter(function(p){return me.platformsConnected.indexOf(p)>-1;});
         var manual=j.item.platforms.filter(function(p){return me.platformsConnected.indexOf(p)===-1;});
@@ -638,6 +733,7 @@ function keepDraftFields(){
   var t=document.getElementById("f-title");if(t)draft.title=t.value;
   var d=document.getElementById("f-desc");if(d)draft.desc=d.value;
   var p=document.getElementById("f-price");if(p)draft.price=p.value;
+  var ca=document.getElementById("f-concierge-addr");if(ca)draft.conciergeAddress=ca.value;
 }
 function openReceipt(id){
   var r=receipts.filter(function(x){return x.id===id;})[0];
@@ -692,10 +788,20 @@ function act(action,id,el){
   if(action==="theme"){localStorage.setItem("kerbit-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
   if(action==="catf"){catFilter=id;render();return;}
+  if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
+  if(action==="herogo"){
+    catFilter=id;tab="feed";
+    var cdef=CATS.filter(function(c){return c[0]===id;})[0];
+    if(cdef&&!cdef[4])showAllCats=true;
+    render();
+    var rail=document.querySelector(".catrail");if(rail)rail.scrollIntoView({behavior:"smooth",block:"center"});
+    return;}
+  if(action==="herodot"){heroIdx=parseInt(id,10)||0;swapHero();return;}
   if(action==="locate"){locate(el.dataset.target,el);return;}
   if(action==="psearch"){
     var q=(document.getElementById("f-search")||{value:searchQ}).value||"";
-    window.open(PSEARCH_URLS[el.dataset.pf]+encodeURIComponent(q),"_blank");return;}
+    var pfUrl=PSEARCH_URLS[el.dataset.pf]||EXTRA_PSEARCH_URLS[el.dataset.pf];
+    window.open(pfUrl+encodeURIComponent(q),"_blank");return;}
   if(action==="ebaysearch"){
     var eq=((document.getElementById("f-search")||{value:searchQ}).value||"").trim();
     if(!eq){toast("Type something to search first.",true);return;}
@@ -706,6 +812,7 @@ function act(action,id,el){
     return;}
   if(action==="cat"){keepDraftFields();draft.category=id;render();return;}
   if(action==="priced"){keepDraftFields();draft.priced=id==="1";render();return;}
+  if(action==="concierge"){keepDraftFields();draft.concierge=id==="1";render();return;}
   if(action==="delmedia"){keepDraftFields();draft.media.splice(parseInt(id,10),1);render();return;}
   if(action==="receipt"){openReceipt(id);return;}
   if(action==="open"){modalItemId=id;modalMiniMode=null;renderModal();return;}
@@ -714,7 +821,7 @@ function act(action,id,el){
     api("/profile/newhandle","POST").then(function(j){me=j.me;toast("You're now "+me.handle+" — picked for you automatically.");refresh();}).catch(function(e){toast(e.message,true);});return;}
   if(action==="logout"){api("/logout","POST").then(function(){me=null;items=[];notifs=[];receipts=[];clearInterval(pollTimer);closeModalAll();render();});return;}
   if(action==="save-profile"){
-    api("/profile","PUT",{name:document.getElementById("p-name").value,suburb:document.getElementById("p-suburb").value,pickupWeekday:parseInt(document.getElementById("p-day").value,10)})
+    api("/profile","PUT",{name:document.getElementById("p-name").value,suburb:document.getElementById("p-suburb").value,state:document.getElementById("p-state").value,pickupWeekday:parseInt(document.getElementById("p-day").value,10)})
     .then(function(j){me=j.me;toast("Details saved.");refresh();}).catch(function(e){toast(e.message,true);});return;}
   if(action==="save-tokens"){
     var toks={};PLATFORMS.forEach(function(p){var v=document.getElementById("tok-"+p).value.trim();if(v)toks[p]=v;});

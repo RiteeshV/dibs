@@ -206,7 +206,8 @@ function publicUser(u) {
 }
 
 /* Categories with no council-truck mechanic — cars, property, jobs and services don't get put on the kerb */
-var NON_KERB_CATS = ["vehicles", "property", "jobs", "services"];
+var NON_KERB_CATS = ["vehicles", "property_rent", "property_sale", "classifieds", "jobs", "services"];
+var AU_STATE_CODES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 
 /* Status auto-transitions — the core business rule */
 async function resolveItem(item, ownerProfile) {
@@ -299,7 +300,7 @@ module.exports = async function handler(req, res) {
           id: uid("u"), email, salt: null, passHash: null, oauthGoogleSub: payload.sub,
           handle: anonHandle(),
           name: String(payload.name || "").slice(0, 30) || null,
-          suburb: "Wentworthville", pickupWeekday: 3,
+          suburb: "Wentworthville", state: "NSW", pickupWeekday: 3,
           handoffs: 0, truckSaved: 0, ratings: [], ecoPoints: 0,
           platformTokens: {}, createdAt: now(),
         };
@@ -323,6 +324,7 @@ module.exports = async function handler(req, res) {
         handle: anonHandle(),
         name: String(body.name || "").slice(0, 30) || null,
         suburb: String(body.suburb || "Wentworthville").slice(0, 40),
+        state: AU_STATE_CODES.includes(body.state) ? body.state : "NSW",
         pickupWeekday: Number.isInteger(body.pickupWeekday) ? Math.max(0, Math.min(6, body.pickupWeekday)) : 3,
         handoffs: 0, truckSaved: 0, ratings: [], ecoPoints: 0,
         platformTokens: {}, createdAt: now(),
@@ -370,6 +372,7 @@ module.exports = async function handler(req, res) {
     if (path === "/profile" && method === "PUT") {
       if (body.name !== undefined) me.name = String(body.name || "").slice(0, 30) || null;
       if (body.suburb) me.suburb = String(body.suburb).slice(0, 40);
+      if (AU_STATE_CODES.includes(body.state)) me.state = body.state;
       if (Number.isInteger(body.pickupWeekday)) me.pickupWeekday = Math.max(0, Math.min(6, body.pickupWeekday));
       if (body.platformTokens && typeof body.platformTokens === "object") {
         for (const k of ["Marketplace", "Gumtree", "Freecycle", "Olio"])
@@ -411,14 +414,20 @@ module.exports = async function handler(req, res) {
       }
       const price = Math.max(0, Math.min(2000000, Number(body.price) || 0));
       const platforms = (Array.isArray(body.platforms) ? body.platforms : []).filter((p) => ["Marketplace", "Gumtree", "Freecycle", "Olio"].includes(p));
+      const category = String(body.category || "other").slice(0, 20);
+      const conciergeAddress = String(body.conciergeAddress || "").trim().slice(0, 200);
+      const concierge = !!body.concierge && NON_KERB_CATS.indexOf(category) === -1 && conciergeAddress
+        ? { requested: true, address: conciergeAddress, requestedAt: now() }
+        : null;
       const item = {
         id: uid("i"), userId: me.id,
         title, desc: String(body.desc || "").slice(0, 240),
-        category: String(body.category || "other").slice(0, 20),
-        media, platforms, price,
+        category,
+        media, platforms, price, concierge,
         postedAt: now(), status: "available", claim: null, flags: [], rating: null, history: [],
       };
       addHistory(item, "Posted to Kerbside by " + me.handle);
+      if (concierge) addHistory(item, "Kerbit Concierge requested — flagged for manual council-pickup coordination");
       if (platforms.length) {
         const withToken = platforms.filter((p) => me.platformTokens[p]);
         const without = platforms.filter((p) => !me.platformTokens[p]);
@@ -582,7 +591,7 @@ module.exports = async function handler(req, res) {
 function meView(u) {
   const avg = u.ratings && u.ratings.length ? u.ratings.reduce((a, b) => a + b, 0) / u.ratings.length : null;
   return {
-    id: u.id, email: u.email, handle: u.handle, name: u.name, suburb: u.suburb,
+    id: u.id, email: u.email, handle: u.handle, name: u.name, suburb: u.suburb, state: u.state || "NSW",
     pickupWeekday: u.pickupWeekday, handoffs: u.handoffs || 0, truckSaved: u.truckSaved || 0,
     trusted: (u.handoffs || 0) >= 3, avgRating: avg,
     platformsConnected: Object.keys(u.platformTokens || {}).filter((k) => u.platformTokens[k]),
@@ -605,5 +614,6 @@ function itemView(it, me, owner) {
     flaggedByMe: (it.flags || []).some((f) => f.byId === me.id),
     rating: it.rating,
     history: mine || (it.claim && it.claim.byId === me.id) ? it.history : (it.history || []).filter((h) => !h.alert),
+    concierge: mine && it.concierge ? it.concierge : null,
   };
 }
