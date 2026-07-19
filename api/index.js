@@ -205,6 +205,9 @@ function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
 }
 
+/* Categories with no council-truck mechanic — cars, property, jobs and services don't get put on the kerb */
+var NON_KERB_CATS = ["vehicles", "property", "jobs", "services"];
+
 /* Status auto-transitions — the core business rule */
 async function resolveItem(item, ownerProfile) {
   let changed = false;
@@ -216,7 +219,7 @@ async function resolveItem(item, ownerProfile) {
     item.status = "available";
     changed = true;
   }
-  if (item.status === "available") {
+  if (item.status === "available" && NON_KERB_CATS.indexOf(item.category) === -1) {
     const wd = ownerProfile ? ownerProfile.pickupWeekday : 3;
     const pickup = nextWeekdayOnOrAfter(item.postedAt + 86400000, wd);
     const msToPickup = pickup - now();
@@ -406,7 +409,7 @@ module.exports = async function handler(req, res) {
         if (m.type === "image" && m.data.length > MAX_IMAGE_B64) return send(res, 400, { error: "A photo is too large — try again." });
         if (m.type === "video" && m.data.length > MAX_VIDEO_B64) return send(res, 400, { error: "Videos must be under ~2.5MB for the pilot." });
       }
-      const price = Math.max(0, Math.min(9999, Number(body.price) || 0));
+      const price = Math.max(0, Math.min(2000000, Number(body.price) || 0));
       const platforms = (Array.isArray(body.platforms) ? body.platforms : []).filter((p) => ["Marketplace", "Gumtree", "Freecycle", "Olio"].includes(p));
       const item = {
         id: uid("i"), userId: me.id,

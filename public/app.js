@@ -2,7 +2,39 @@
 "use strict";
 var APP="Kerbit";
 var TAGLINE="Kerb it. Claim it. Or the truck takes it.";
-var CATS=[["furniture","Furniture","🪑"],["electronics","Electronics","🔌"],["clothing","Clothing","👕"],["books","Books","📚"],["kitchen","Kitchen","🍳"],["toys","Toys","🧸"],["garden","Garden","🪴"],["other","Other","📦"]];
+/* 4th field: 1 = "kerb" item (free-giveaway / council-truck-day mechanic applies), 0 = plain marketplace listing (no truck deadline — vehicles, property, jobs, services aren't council-collected) */
+var CATS=[["furniture","Furniture","🪑",1],["electronics","Electronics","🔌",1],["clothing","Clothing","👕",1],["books","Books","📚",1],["kitchen","Kitchen","🍳",1],["toys","Toys","🧸",1],["garden","Garden","🪴",1],["sports","Sports & Outdoors","⚽",1],["baby","Baby & Kids","🍼",1],["pets","Pet Supplies","🐾",1],["tools","Tools & DIY","🔧",1],["music","Musical Instruments","🎸",1],["hobbies","Hobbies & Craft","🎨",1],["vehicles","Vehicles","🚗",0],["property","Property","🏠",0],["jobs","Jobs","💼",0],["services","Services","🛠️",0],["other","Other","📦",1]];
+function catKerb(catKey){var c=CATS.filter(function(x){return x[0]===catKey;})[0];return c?!!c[3]:true;}
+var CAT_SYNONYMS={
+  vehicles:["car","cars","vehicle","vehicles","ute","suv","4wd","motorbike","motorcycle","van","auto","hatch","sedan","wagon"],
+  property:["house","houses","apartment","unit","room","rent","rental","property","land","flat","granny","share"],
+  jobs:["job","jobs","work","hiring","vacancy","career","casual","fulltime","parttime"],
+  services:["service","services","cleaner","tutor","tutoring","mechanic","plumber","handyman","gardener","removalist"],
+  furniture:["couch","sofa","chair","table","desk","bed","furniture","wardrobe","drawer","shelf"],
+  electronics:["tv","laptop","phone","electronics","computer","monitor","console","camera","fridge","washer"],
+  clothing:["clothes","clothing","shirt","jacket","shoes","dress","jeans"],
+  books:["book","books","novel","textbook","magazine"],
+  kitchen:["kitchen","microwave","cookware","utensils","blender","kettle"],
+  toys:["toy","toys","lego","boardgame"],
+  garden:["garden","plant","plants","pot","mower","outdoor","planter"],
+  sports:["sports","bike","bicycle","gym","ball","surfboard","skateboard"],
+  baby:["baby","kids","pram","stroller","cot","highchair"],
+  pets:["pet","pets","dog","cat","aquarium","cage","kennel"],
+  tools:["tool","tools","drill","saw","diy","ladder"],
+  music:["guitar","piano","music","drum","keyboard","amp"],
+  hobbies:["hobby","craft","art","paint","collectible","puzzle"]
+};
+function parseSmartQuery(q){
+  q=(q||"").toLowerCase().trim();
+  var maxPrice=null;
+  var m=q.match(/(?:under|below|less than|max|up to)\s*\$?(\d[\d,]*)/)||q.match(/\$(\d[\d,]*)/);
+  if(m){maxPrice=Number(m[1].replace(/,/g,""));q=q.replace(m[0],"").trim();}
+  var hayQ=" "+q+" ",catGuess=null;
+  for(var i=0;i<CATS.length&&!catGuess;i++){if(hayQ.indexOf(" "+CATS[i][0]+" ")>-1||hayQ.indexOf(CATS[i][1].toLowerCase())>-1)catGuess=CATS[i][0];}
+  if(!catGuess){outer:for(var k in CAT_SYNONYMS){var syns=CAT_SYNONYMS[k];for(var j=0;j<syns.length;j++){if(hayQ.indexOf(" "+syns[j]+" ")>-1){catGuess=k;break outer;}}}}
+  var terms=q.split(/\s+/).filter(Boolean);
+  return {maxPrice:maxPrice,catGuess:catGuess,terms:terms};
+}
 var PLATFORMS=["Marketplace","Gumtree","Freecycle","Olio"];
 var FLAG_REASONS=["Not relevant / inappropriate","Not as described","Suspected scam","Unsafe item","Already gone / duplicate","Other"];
 var WD=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -20,7 +52,7 @@ function toast(msg,err){var el=document.getElementById("toast");el.textContent=m
 function fmtD(ts){return new Date(ts).toLocaleDateString(undefined,{month:"short",day:"numeric"});}
 function fmtDT(ts){var d=new Date(ts);return fmtD(ts)+" "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function daysTo(ts){return Math.ceil((ts-Date.now())/86400000);}
-function money(n){return "$"+(Math.round(n*100)/100).toFixed(2);}
+function money(n){n=Math.round(n*100)/100;var s=Number.isInteger(n)?String(n):n.toFixed(2);return "$"+s.replace(/\B(?=(\d{3})+(?!\d))/g,",");}
 function theme(){return localStorage.getItem("kerbit-theme")||"light";}
 function applyTheme(){document.documentElement.setAttribute("data-theme",theme());}
 function btn(act,id,label,variant){return '<button class="pill'+(variant?" "+variant:"")+'" data-act="'+act+'" data-id="'+id+'">'+label+'</button>';}
@@ -127,6 +159,7 @@ function viewAuthSignup(){
       '<li><span class="ck">✓</span>Post an item in under a minute — free, forever.</li>'+
       '<li><span class="ck">✓</span>Neighbours only ever see an anonymous handle like <b>Kerb-Wombat-482</b> — never your name or number.</li>'+
       '<li><span class="ck">✓</span>Nobody claims it? It\'s auto-booked for your council truck day, so nothing sits on the kerb.</li>'+
+      '<li><span class="ck">✓</span>Also unifies vehicles, property, jobs and services in one place — no more juggling five different marketplace apps.</li>'+
     '</ul>'+
   '</div>'+
   '<div class="formside reveal">'+
@@ -180,7 +213,10 @@ function mediaThumb(it){
 }
 function stubFor(it){
   if(it.observation)return 'Hidden while '+it.flags+' flag'+(it.flags>1?"s are":" is")+' reviewed';
-  if(it.status==="available"){var d=Math.max(daysTo(it.pickupAt),0);return 'Unclaimed after <span class="num">'+d+'d</span> → auto-booked for the truck';}
+  if(it.status==="available"){
+    if(!catKerb(it.category))return 'Listed '+fmtD(it.postedAt)+' — message the poster to arrange a time';
+    var d=Math.max(daysTo(it.pickupAt),0);return 'Unclaimed after <span class="num">'+d+'d</span> → auto-booked for the truck';
+  }
   if(it.status==="claimed"&&it.claim)return esc(it.claim.byHandle)+' has <span class="num">'+Math.max(daysTo(it.claim.expiresAt),0)+'d</span> to collect — or it goes back up';
   if(it.status==="booked_for_truck")return 'Nobody claimed it — booked for the council collection';
   return 'Posted '+fmtD(it.postedAt);
@@ -306,8 +342,20 @@ function feedItems(){
   var act=items.filter(function(i){return !i.mine&&(i.status==="available"||i.status==="claimed"||i.status==="booked_for_truck")&&!i.observation;});
   if(feedScope==="suburb")act=act.filter(function(i){return (i.poster.suburb||"").toLowerCase()===(me.suburb||"").toLowerCase();});
   if(catFilter!=="all")act=act.filter(function(i){return i.category===catFilter;});
-  if(searchQ){var q=searchQ.toLowerCase();
-    act=act.filter(function(i){return (i.title+" "+(i.desc||"")+" "+i.category+" "+(i.poster.suburb||"")).toLowerCase().indexOf(q)>-1;});}
+  if(searchQ){
+    var sp=parseSmartQuery(searchQ);
+    act=act.filter(function(i){
+      if(sp.maxPrice!=null&&i.price>sp.maxPrice)return false;
+      if(sp.catGuess)return i.category===sp.catGuess;
+      if(!sp.terms.length)return true;
+      var hay=(i.title+" "+(i.desc||"")+" "+i.category+" "+(i.poster.suburb||"")).toLowerCase();
+      return sp.terms.some(function(t){return hay.indexOf(t)>-1;});
+    }).map(function(i){
+      var hay=(i.title+" "+(i.desc||"")+" "+i.category).toLowerCase();
+      i._score=(sp.catGuess&&i.category===sp.catGuess?5:0)+sp.terms.reduce(function(s,t){return s+(hay.indexOf(t)>-1?1:0);},0);
+      return i;
+    }).sort(function(a,b){return b._score-a._score;});
+  }
   return act;
 }
 function feedListHtml(){
@@ -316,7 +364,7 @@ function feedListHtml(){
 }
 function viewFeed(){
   var demo=dbMode==="demo"?'<div class="note demo-warn reveal">⚠️ Pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
-  var search='<div class="searchwrap reveal"><span class="sic">🔍</span><input id="f-search" placeholder="Search bookshelf, couch, toys…" value="'+esc(searchQ)+'" autocomplete="off"></div>';
+  var search='<div class="searchwrap reveal"><span class="sic">🔍</span><input id="f-search" placeholder="Try “car under 15000”, “free couch”…" value="'+esc(searchQ)+'" autocomplete="off"></div>';
   var loc='<div class="locrow reveal">'+
     '<button class="locchip'+(feedScope==="suburb"?" on":"")+'" data-act="scope" data-id="suburb">📍 '+esc(me.suburb)+'</button>'+
     '<button class="locchip'+(feedScope==="all"?" on":"")+'" data-act="scope" data-id="all">🇦🇺 All Australia</button>'+
@@ -358,7 +406,7 @@ function viewPost(){
   '<div class="field"><label>Give away or sell?</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
   '<button type="button" class="pill'+(!draft.priced?" pri":"")+'" data-act="priced" data-id="0">Free</button>'+
   '<button type="button" class="pill'+(draft.priced?" pri":"")+'" data-act="priced" data-id="1">Priced</button>'+
-  (draft.priced?'<input id="f-price" type="number" min="1" max="9999" placeholder="$" style="max-width:110px" value="'+esc(draft.price||"")+'">':"")+'</div>'+
+  (draft.priced?'<input id="f-price" type="number" min="1" max="2000000" placeholder="$" style="max-width:110px" value="'+esc(draft.price||"")+'">':"")+'</div>'+
   '<p class="hint">Priced tags get an official online receipt when the handoff is confirmed.</p></div>'+
   '<div class="field"><label>Also cross-post to</label><div class="pchecks">'+PLATFORMS.map(function(p){
     var on=draft.platforms.indexOf(p)>-1;var tok=me.platformsConnected.indexOf(p)>-1;
