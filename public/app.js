@@ -565,6 +565,51 @@ function feedItems(){
   }
   return act;
 }
+function currentSearchText(){
+  var fs=document.getElementById("f-search");
+  if(fs&&fs.value)return fs.value;
+  var fkw=document.getElementById("f-kw");
+  if(fkw&&fkw.value)return fkw.value;
+  return searchQ||filterKeyword||"";
+}
+function quickMatches(query){
+  if(!query)return [];
+  var q=query.toLowerCase();
+  var pool=items.filter(function(i){return !i.mine&&(i.status==="available"||i.status==="claimed"||i.status==="booked_for_truck")&&!i.observation;});
+  if(catFilter!=="all"&&catFilter!=="free")pool=pool.filter(function(i){return i.category===catFilter;});
+  return pool.filter(function(i){
+    var hay=(i.title+" "+(i.desc||"")+" "+i.category+" "+(i.poster.suburb||"")).toLowerCase();
+    return hay.indexOf(q)>-1;
+  }).slice(0,5);
+}
+function dropdownHtml(query){
+  var matches=quickMatches(query);
+  if(matches.length){
+    return matches.map(function(it){
+      return '<div class="ddrow">'+
+        '<button type="button" class="ddthumb" data-act="open" data-id="'+it.id+'">'+mediaThumb(it)+'</button>'+
+        '<button type="button" class="ddinfo" data-act="open" data-id="'+it.id+'"><span class="ddtt">'+esc(it.title)+'</span><span class="ddmeta">'+(it.price>0?money(it.price):"Free")+' · '+esc(it.poster.suburb)+'</span></button>'+
+        '<button type="button" class="iconlink'+(compareIds.indexOf(it.id)>-1?" on":"")+'" data-act="togglecompare" data-id="'+it.id+'" title="Add to compare">'+ICONS.compare+'</button>'+
+      '</div>';
+    }).join("");
+  }
+  var sp=parseSmartQuery(query);
+  var activeCat=sp.catGuess||(catFilter!=="all"&&catFilter!=="free"?catFilter:null);
+  var sites=psearchSites(activeCat);
+  return '<div class="ddempty">No matching tags on '+APP+' yet — try elsewhere:</div>'+
+    '<div class="ddelsewhere">'+Object.keys(sites).map(function(p){
+      return p==="eBay AU"
+        ?'<button type="button" class="pill gh sm" data-act="ebaysearch">eBay AU 🔎</button>'
+        :'<button type="button" class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
+    }).join("")+'</div>';
+}
+function updateDropdown(boxId,query){
+  var box=document.getElementById(boxId);
+  if(!box)return;
+  if(!query){box.hidden=true;box.innerHTML="";return;}
+  box.innerHTML=dropdownHtml(query);
+  box.hidden=false;
+}
 function filterPanelHtml(){
   if(catFilter==="all"||catFilter==="free")return "";
   var kwLabel=CAT_FILTER_LABEL[catFilter]||"Keyword";
@@ -572,7 +617,7 @@ function filterPanelHtml(){
   return '<div class="filterpanel reveal">'+
     '<div class="fprow"><label>Min $</label><input type="number" id="f-min" min="0" value="'+esc(filterMin)+'" placeholder="0"></div>'+
     '<div class="fprow"><label>Max $</label><input type="number" id="f-max" min="0" value="'+esc(filterMax)+'" placeholder="Any"></div>'+
-    '<div class="fprow grow"><label>'+esc(kwLabel)+'</label><input type="text" id="f-kw" value="'+esc(filterKeyword)+'" placeholder="'+esc(kwPh)+'"></div>'+
+    '<div class="fprow grow" style="position:relative"><label>'+esc(kwLabel)+'</label><input type="text" id="f-kw" value="'+esc(filterKeyword)+'" placeholder="'+esc(kwPh)+'" autocomplete="off"><div class="searchdrop" id="kwDrop" hidden></div></div>'+
     '<button type="button" class="pill gh sm" data-act="clearfilters">Clear</button>'+
   '</div>';
 }
@@ -582,7 +627,7 @@ function feedListHtml(){
 }
 function viewFeed(){
   var demo=dbMode==="demo"?'<div class="note demo-warn reveal">⚠️ Pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
-  var search='<div class="searchwrap reveal"><span class="sic">'+ICONS.search+'</span><input id="f-search" placeholder="'+esc(searchPlaceholderText())+'" value="'+esc(searchQ)+'" autocomplete="off"></div>';
+  var search='<div class="searchwrap reveal"><span class="sic">'+ICONS.search+'</span><input id="f-search" placeholder="'+esc(searchPlaceholderText())+'" value="'+esc(searchQ)+'" autocomplete="off"><div class="searchdrop" id="searchDrop" hidden></div></div>';
   var loc='<div class="locrow reveal">'+
     '<button class="locchip'+(feedScope==="suburb"?" on":"")+'" data-act="scope" data-id="suburb">📍 '+esc(me.suburb)+'</button>'+
     '<button class="locchip'+(feedScope==="all"?" on":"")+'" data-act="scope" data-id="all">🇦🇺 All Australia</button>'+
@@ -813,12 +858,20 @@ function bind(){
     }
   };
   var fs=document.getElementById("f-search");
-  if(fs)fs.oninput=function(){searchQ=fs.value;var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();};
+  if(fs){
+    fs.oninput=function(){searchQ=fs.value;var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();updateDropdown("searchDrop",searchQ);};
+    fs.onfocus=function(){if(fs.value)updateDropdown("searchDrop",fs.value);};
+    fs.onblur=function(){setTimeout(function(){updateDropdown("searchDrop","");},150);};
+  }
   var fmin=document.getElementById("f-min"),fmax=document.getElementById("f-max"),fkw=document.getElementById("f-kw");
   function refreshFeedList(){var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();}
   if(fmin)fmin.oninput=function(){filterMin=fmin.value;refreshFeedList();};
   if(fmax)fmax.oninput=function(){filterMax=fmax.value;refreshFeedList();};
-  if(fkw)fkw.oninput=function(){filterKeyword=fkw.value;refreshFeedList();};
+  if(fkw){
+    fkw.oninput=function(){filterKeyword=fkw.value;refreshFeedList();updateDropdown("kwDrop",filterKeyword);};
+    fkw.onfocus=function(){if(fkw.value)updateDropdown("kwDrop",fkw.value);};
+    fkw.onblur=function(){setTimeout(function(){updateDropdown("kwDrop","");},150);};
+  }
   var af=document.getElementById("authForm");
   if(af)af.onsubmit=function(e){
     e.preventDefault();
@@ -953,11 +1006,11 @@ function act(action,id,el){
   if(action==="herodot"){heroIdx=parseInt(id,10)||0;swapHero();return;}
   if(action==="locate"){locate(el.dataset.target,el);return;}
   if(action==="psearch"){
-    var q=(document.getElementById("f-search")||{value:searchQ}).value||"";
+    var q=currentSearchText();
     var pfUrl=PSEARCH_URLS[el.dataset.pf]||EXTRA_PSEARCH_URLS[el.dataset.pf];
     window.open(pfUrl+encodeURIComponent(q),"_blank");return;}
   if(action==="ebaysearch"){
-    var eq=((document.getElementById("f-search")||{value:searchQ}).value||"").trim();
+    var eq=currentSearchText().trim();
     if(!eq){toast("Type something to search first.",true);return;}
     if(!ebayEnabled){toast("eBay search isn't connected yet — it needs a free eBay Developer Client ID + Secret.",true);return;}
     ebayLoading=true;ebayResults=null;render();

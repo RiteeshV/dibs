@@ -172,6 +172,18 @@ html[data-theme="dark"] .themesw .knob{transform:translateX(22px)}
 .cattile.on .circ{background:linear-gradient(135deg,var(--teal),var(--teald));border-color:transparent;color:#fff}
 .cattile span.lbl{font-size:10px;font-weight:600;color:var(--soft);text-align:center;line-height:1.2}
 .cattile.on span.lbl{color:var(--teal);font-weight:700}
+.searchdrop{position:absolute;left:0;right:0;top:calc(100% + 6px);background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lift);z-index:30;overflow:hidden;max-height:340px;overflow-y:auto}
+.ddrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.ddrow:last-child{border-bottom:none}
+button.ddthumb{border:none;background:var(--card2);width:40px;height:40px;border-radius:9px;overflow:hidden;flex-shrink:0;cursor:pointer;padding:0;color:var(--faint)}
+button.ddthumb img,button.ddthumb video{width:100%;height:100%;object-fit:cover}
+button.ddthumb .emoji{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+button.ddthumb .emoji svg{width:18px;height:18px}
+button.ddinfo{flex:1;min-width:0;border:none;background:none;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:0}
+.ddtt{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ddmeta{font-size:11px;color:var(--soft)}
+.ddempty{padding:12px 14px 6px;font-size:12px;color:var(--soft)}
+.ddelsewhere{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px}
 .filterpanel{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--card);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;margin:0 0 14px;box-shadow:var(--shadow)}
 .fprow{display:flex;flex-direction:column;gap:4px;min-width:80px}
 .fprow.grow{flex:1;min-width:140px}
