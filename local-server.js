@@ -22,6 +22,6 @@ http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
 }).listen(PORT, () => {
-  console.log("Kerbit running → http://localhost:" + PORT);
+  console.log("Dibs running → http://localhost:" + PORT);
   console.log("Data mode:", process.env.SUPABASE_URL ? "supabase (permanent)" : "in-memory demo (set SUPABASE_URL + SUPABASE_SERVICE_KEY for permanent data)");
 });

@@ -1,33 +1,33 @@
 (function(){
 "use strict";
-var APP="Kerbit";
-var TAGLINE="Kerb it. Claim it. Or the truck takes it.";
+var APP="Dibs";
+var TAGLINE="Call dibs before the truck does.";
 /* Fields: [key, label, icon, kerb(1=free-giveaway/truck-day mechanic applies, 0=plain listing), primary(1=shown by default, 0=behind "More")]
    Mirrors the categories Australians expect from Facebook Marketplace/Gumtree, unified into one app. */
 var CATS=[
-  ["vehicles","Vehicles","🚗",0,1],
-  ["property_rent","Property for rent","🏠",0,1],
-  ["property_sale","Property for sale","🏡",0,1],
-  ["furniture","Furniture","🪑",1,1],
-  ["electronics","Electronics","🔌",1,1],
-  ["clothing","Clothing","👕",1,1],
-  ["family","Family","👨‍👩‍👧",1,1],
-  ["classifieds","Classifieds","📋",0,1],
-  ["jobs","Jobs","💼",0,0],
-  ["services","Services","🛠️",0,0],
-  ["entertainment","Entertainment","🎬",1,0],
-  ["books","Books","📚",1,0],
-  ["kitchen","Kitchen","🍳",1,0],
-  ["toys","Toys & Games","🧸",1,0],
-  ["garden","Garden & Outdoors","🪴",1,0],
-  ["sports","Sporting Goods","⚽",1,0],
-  ["pets","Pet Supplies","🐾",1,0],
-  ["homegoods","Home Goods","🛋️",1,0],
-  ["homeimprove","Home Improvement Supplies","🔧",1,0],
-  ["music","Musical Instruments","🎸",1,0],
-  ["office","Office Supplies","🖇️",1,0],
-  ["hobbies","Hobbies & Craft","🎨",1,0],
-  ["other","Other","📦",1,0]
+  ["vehicles","Vehicles","",0,1],
+  ["property_rent","Property for rent","",0,1],
+  ["property_sale","Property for sale","",0,1],
+  ["furniture","Furniture","",1,1],
+  ["electronics","Electronics","",1,1],
+  ["clothing","Clothing","",1,1],
+  ["family","Family","",1,1],
+  ["classifieds","Classifieds","",0,1],
+  ["jobs","Jobs","",0,0],
+  ["services","Services","",0,0],
+  ["entertainment","Entertainment","",1,0],
+  ["books","Books","",1,0],
+  ["kitchen","Kitchen","",1,0],
+  ["toys","Toys & Games","",1,0],
+  ["garden","Garden & Outdoors","",1,0],
+  ["sports","Sporting Goods","",1,0],
+  ["pets","Pet Supplies","",1,0],
+  ["homegoods","Home Goods","",1,0],
+  ["homeimprove","Home Improvement Supplies","",1,0],
+  ["music","Musical Instruments","",1,0],
+  ["office","Office Supplies","",1,0],
+  ["hobbies","Hobbies & Craft","",1,0],
+  ["other","Other","",1,0]
 ];
 function catKerb(catKey){var c=CATS.filter(function(x){return x[0]===catKey;})[0];return c?!!c[3]:true;}
 /* Minimal line-icon set (feather/lucide-style) — replaces emoji for a cleaner, non-AI-slop look */
@@ -60,7 +60,18 @@ var ICONS={
   hobbies:ic('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.7 2-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1.1.9-2 2-2H17a4 4 0 0 0 4-4c0-4.4-4-7.8-9-7.8z"/><circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="7" r="1" fill="currentColor" stroke="none"/>'),
   other:ic('<path d="M21 8.5 12 3 3 8.5 12 14z"/><path d="M3 8.5V16l9 5.5 9-5.5V8.5"/><line x1="12" y1="14" x2="12" y2="21.5"/>'),
   truck:ic('<rect x="2.5" y="8" width="12" height="9" rx="1"/><path d="M14.5 11h3.5l3 3v3h-6.5z"/><circle cx="6.5" cy="18" r="1.6"/><circle cx="16.5" cy="18" r="1.6"/>'),
-  compare:ic('<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/>')
+  compare:ic('<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/>'),
+  bell:ic('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'),
+  plus:ic('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
+  pin:ic('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'),
+  user:ic('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+  sun:ic('<circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.6" y1="4.6" x2="6" y2="6"/><line x1="18" y1="18" x2="19.4" y2="19.4"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.6" y1="19.4" x2="6" y2="18"/><line x1="18" y1="6" x2="19.4" y2="4.6"/>'),
+  moon:ic('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  locate:ic('<path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
+  globe:ic('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
+  cart:ic('<circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2.5 3h2l2.6 12.4a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.6L21.5 7H6"/>'),
+  trophy:ic('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 5M17 6h3a3 3 0 0 1-3 5"/>'),
+  leaf:ic('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>')
 };
 function catIcon(key){return ICONS[key]||ICONS.other;}
 var CAT_SYNONYMS={
@@ -200,7 +211,7 @@ function fmtD(ts){return new Date(ts).toLocaleDateString(undefined,{month:"short
 function fmtDT(ts){var d=new Date(ts);return fmtD(ts)+" "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function daysTo(ts){return Math.ceil((ts-Date.now())/86400000);}
 function money(n){n=Math.round(n*100)/100;var s=Number.isInteger(n)?String(n):n.toFixed(2);return "$"+s.replace(/\B(?=(\d{3})+(?!\d))/g,",");}
-function theme(){return localStorage.getItem("kerbit-theme")||"light";}
+function theme(){return localStorage.getItem("dibs-theme")||"light";}
 function applyTheme(){document.documentElement.setAttribute("data-theme",theme());}
 function btn(act,id,label,variant){return '<button class="pill'+(variant?" "+variant:"")+'" data-act="'+act+'" data-id="'+id+'">'+label+'</button>';}
 
@@ -231,7 +242,7 @@ function startPolling(){
   pollTimer=setInterval(function(){
     if(!me)return;
     api("/notifications").then(function(j){
-      if(j.unread>unread)toast("🔔 "+j.notifications[0].text);
+      if(j.unread>unread)toast(j.notifications[0].text);
       notifs=j.notifications;unread=j.unread;paintBadge();
     }).catch(function(){});
   },25000);
@@ -250,7 +261,7 @@ function initScrollAnim(){
 /* ---------- location ---------- */
 function locate(inputId,btnEl){
   if(!navigator.geolocation){toast("Location isn't available in this browser — just type your suburb.",true);return;}
-  var orig=btnEl.innerHTML;btnEl.disabled=true;btnEl.innerHTML="📍 Locating…";
+  var orig=btnEl.innerHTML;btnEl.disabled=true;btnEl.innerHTML="Locating…";
   function reset(){btnEl.disabled=false;btnEl.innerHTML=orig;}
   navigator.geolocation.getCurrentPosition(function(pos){
     var lat=pos.coords.latitude,lon=pos.coords.longitude;
@@ -307,7 +318,7 @@ function viewAuthSignup(){
     '<p class="tag">'+TAGLINE+'</p>'+
     '<ul>'+
       '<li><span class="ck">✓</span>Post an item in under a minute — free, forever.</li>'+
-      '<li><span class="ck">✓</span>Neighbours only ever see an anonymous handle like <b>Kerb-Wombat-482</b> — never your name or number.</li>'+
+      '<li><span class="ck">✓</span>Neighbours only ever see an anonymous handle like <b>Wombat-482</b> — never your name or number.</li>'+
       '<li><span class="ck">✓</span>Nobody claims it? It\'s auto-booked for your council truck day, so nothing sits on the kerb.</li>'+
       '<li><span class="ck">✓</span>Also unifies vehicles, property, jobs and services in one place — no more juggling five different marketplace apps.</li>'+
     '</ul>'+
@@ -320,7 +331,7 @@ function viewAuthSignup(){
     '<form id="authForm">'+
     '<div class="field"><label for="a-email">Email</label><input id="a-email" type="email" required autocomplete="email"></div>'+
     '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" required minlength="6" autocomplete="new-password"></div>'+
-    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. '+esc(suburbPlaceholderText())+'" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
+    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. '+esc(suburbPlaceholderText())+'" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">'+ICONS.locate+'<span>Locate</span></button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
     '<div class="field"><label for="a-state">State</label><select id="a-state">'+AU_STATES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===suburbPhState?" selected":"")+'>'+s[1]+' ('+s[0]+')</option>';}).join("")+'</select></div>'+
     '<div class="field"><label for="a-day">Council truck day</label><select id="a-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===3?" selected":"")+'>'+w+'</option>';}).join("")+'</select></div>'+
     '<button type="submit" class="pill pri block">Create account</button>'+
@@ -362,7 +373,7 @@ function mediaThumb(it){
   return '<div class="emoji">'+catIcon(it.category)+'</div>';
 }
 function stubFor(it){
-  var concierge=it.mine&&it.concierge&&it.concierge.requested?'🚚 Kerbit Concierge requested — ':'';
+  var concierge=it.mine&&it.concierge&&it.concierge.requested?'<span class="ic-inline">'+ICONS.truck+'</span> Concierge requested — ':'';
   if(it.observation)return concierge+'Hidden while '+it.flags+' flag'+(it.flags>1?"s are":" is")+' reviewed';
   if(it.status==="available"){
     if(!catKerb(it.category))return concierge+'Listed '+fmtD(it.postedAt)+' — message the poster to arrange a time';
@@ -396,7 +407,7 @@ function allActions(it){
   }else{
     if(!it.observation&&it.status==="available")acts+=btn("claim",it.id,(it.price>0?"Claim · "+money(it.price):"I'll take it"),"pri");
     if((it.status==="collected"||it.status==="collected_by_truck")&&it.claim&&it.claim.byMe&&!it.rating)acts+=btn("rate",it.id,"Rate handoff","");
-    if(it.status!=="collected"&&it.status!=="collected_by_truck"&&!it.flaggedByMe)acts+=btn("flag",it.id,"⚑ Flag","gh");
+    if(it.status!=="collected"&&it.status!=="collected_by_truck"&&!it.flaggedByMe)acts+=btn("flag",it.id,"Flag","gh");
   }
   return acts;
 }
@@ -494,7 +505,7 @@ function itemModalHtml(id){
     '<div class="modal-body">'+
     '<span class="modal-price'+(it.price>0?"":" free")+'">'+(it.price>0?money(it.price)+" · cash-free at handoff":"Free")+'</span>'+
     '<h3 class="modal-title">'+esc(it.title)+'</h3>'+
-    '<div class="modal-meta"><span>'+esc(it.poster.handle)+(it.poster.trusted?' <span class="trustchip">✓ trusted</span>':'')+'</span><span>·</span><span>📍 '+esc(it.poster.suburb)+'</span><span>·</span><span>'+fmtD(it.postedAt)+'</span></div>'+
+    '<div class="modal-meta"><span>'+esc(it.poster.handle)+(it.poster.trusted?' <span class="trustchip">✓ trusted</span>':'')+'</span><span>·</span><span>'+esc(it.poster.suburb)+'</span><span>·</span><span>'+fmtD(it.postedAt)+'</span></div>'+
     '<div class="modal-map" id="map-'+it.id+'"><p class="hint" style="margin:0">Loading map…</p></div>'+
     (it.desc?'<p class="modal-desc">'+esc(it.desc)+'</p>':'')+
     (it.platforms.length?'<div class="chips">'+it.platforms.map(function(p){return '<span class="chip">'+esc(p)+'</span>';}).join("")+'</div>':"")+
@@ -512,9 +523,9 @@ function flagModalHtml(){
 }
 function compareModalHtml(){
   var its=compareIds.map(function(id){return items.filter(function(x){return x.id===id;})[0];}).filter(Boolean);
-  if(!its.length)return '<button class="modal-close" data-act="close-modal">×</button><div style="padding:40px 20px;text-align:center" class="hint">Nothing to compare — tap the compare icon on a tag first.</div>';
+  if(!its.length)return '<button class="modal-close" data-act="close-modal">×</button><div style="padding:40px 20px;text-align:center" class="hint">Nothing to compare — tap the compare icon on an item first.</div>';
   return '<button class="modal-close" data-act="close-modal">×</button>'+
-    '<div class="modal-body"><h3 class="modal-title">Compare '+its.length+' tag'+(its.length>1?"s":"")+'</h3>'+
+    '<div class="modal-body"><h3 class="modal-title">Compare '+its.length+' item'+(its.length>1?"s":"")+'</h3>'+
     '<div class="comparegrid">'+its.map(function(it){
       var c=CATS.filter(function(x){return x[0]===it.category;})[0];
       return '<div class="comparecard">'+
@@ -596,10 +607,10 @@ function dropdownHtml(query){
   var sp=parseSmartQuery(query);
   var activeCat=sp.catGuess||(catFilter!=="all"&&catFilter!=="free"?catFilter:null);
   var sites=psearchSites(activeCat);
-  return '<div class="ddempty">No matching tags on '+APP+' yet — try elsewhere:</div>'+
+  return '<div class="ddempty">No matches on '+APP+' yet — try elsewhere:</div>'+
     '<div class="ddelsewhere">'+Object.keys(sites).map(function(p){
       return p==="eBay AU"
-        ?'<button type="button" class="pill gh sm" data-act="ebaysearch">eBay AU 🔎</button>'
+        ?'<button type="button" class="pill gh sm" data-act="ebaysearch">eBay AU</button>'
         :'<button type="button" class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
     }).join("")+'</div>';
 }
@@ -623,14 +634,14 @@ function filterPanelHtml(){
 }
 function feedListHtml(){
   var act=feedItems();
-  return act.length?act.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.all+'</span>'+(searchQ?'Nothing matches "'+esc(searchQ)+'" on Kerbit — try the platform search below.':(feedScope==="suburb"?'No tags in '+esc(me.suburb)+' right now — try 🇦🇺 All Australia, or share the app link!':'No tags right now — share the app link so people can post!'))+'</div>';
+  return act.length?act.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.all+'</span>'+(searchQ?'Nothing matches "'+esc(searchQ)+'" on '+APP+' — try the links below.':(feedScope==="suburb"?'Nothing in '+esc(me.suburb)+' yet — try All Australia, or share the app link!':'Nothing here yet — share the app link so people can post!'))+'</div>';
 }
 function viewFeed(){
-  var demo=dbMode==="demo"?'<div class="note demo-warn reveal">⚠️ Pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
+  var demo=dbMode==="demo"?'<div class="note demo-warn reveal">Heads up — pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
   var search='<div class="searchwrap reveal"><span class="sic">'+ICONS.search+'</span><input id="f-search" placeholder="'+esc(searchPlaceholderText())+'" value="'+esc(searchQ)+'" autocomplete="off"><div class="searchdrop" id="searchDrop" hidden></div></div>';
   var loc='<div class="locrow reveal">'+
-    '<button class="locchip'+(feedScope==="suburb"?" on":"")+'" data-act="scope" data-id="suburb">📍 '+esc(me.suburb)+'</button>'+
-    '<button class="locchip'+(feedScope==="all"?" on":"")+'" data-act="scope" data-id="all">🇦🇺 All Australia</button>'+
+    '<button class="locchip'+(feedScope==="suburb"?" on":"")+'" data-act="scope" data-id="suburb"><span class="ci">'+ICONS.locate+'</span>'+esc(me.suburb)+'</button>'+
+    '<button class="locchip'+(feedScope==="all"?" on":"")+'" data-act="scope" data-id="all"><span class="ci">'+ICONS.globe+'</span>All Australia</button>'+
   '</div>';
   var catList=showAllCats?CATS:CATS.filter(function(c){return c[4];});
   var catrail='<div class="catrail reveal">'+
@@ -647,20 +658,20 @@ function viewFeed(){
   var psearch='<div class="psearch reveal">'+esc(psearchHeading)+
     '<div class="pbtns">'+Object.keys(sites).map(function(p){
       return p==="eBay AU"
-        ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU 🔎</button>'
+        ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU</button>'
         :'<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
     }).join("")+'</div></div>';
-  return demo+heroHtml()+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
+  return demo+heroHtml()+'<h2 class="st reveal">Fresh near you</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
 }
 function ebayPanelHtml(){
-  if(ebayLoading)return '<div class="psearch reveal"><p class="hint" style="margin:0">🔎 Searching eBay AU…</p></div>';
+  if(ebayLoading)return '<div class="psearch reveal"><p class="hint" style="margin:0">Searching eBay AU…</p></div>';
   if(!ebayResults)return "";
   if(ebayResults.error)return '<div class="psearch reveal"><p class="hint" style="margin:0;color:var(--red)">'+esc(ebayResults.error)+'</p></div>';
   if(!ebayResults.items.length)return '<div class="psearch reveal"><p class="hint" style="margin:0">No eBay AU results for “'+esc(ebayResults.q)+'”.</p></div>';
-  return '<div class="psearch reveal"><div style="font-weight:700;margin-bottom:10px">🛒 Also on eBay AU for “'+esc(ebayResults.q)+'”</div>'+
+  return '<div class="psearch reveal"><div style="font-weight:700;margin-bottom:10px">Also on eBay AU for “'+esc(ebayResults.q)+'”</div>'+
     '<div class="ebayrow">'+ebayResults.items.map(function(it){
       return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
-        (it.image?'<img src="'+esc(it.image)+'" alt="">':'<div class="ebayph">🛒</div>')+
+        (it.image?'<img src="'+esc(it.image)+'" alt="">':'<div class="ebayph">'+ICONS.cart+'</div>')+
         '<div class="et">'+esc(it.title)+'</div>'+
         (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
       '</a>';
@@ -678,9 +689,9 @@ function viewPost(){
   '<button type="button" class="pill'+(!draft.priced?" pri":"")+'" data-act="priced" data-id="0">Free</button>'+
   '<button type="button" class="pill'+(draft.priced?" pri":"")+'" data-act="priced" data-id="1">Priced</button>'+
   (draft.priced?'<input id="f-price" type="number" min="1" max="2000000" placeholder="$" style="max-width:110px" value="'+esc(draft.price||"")+'">':"")+'</div>'+
-  '<p class="hint">Priced tags get an official online receipt when the handoff is confirmed.</p></div>'+
+  '<p class="hint">Priced listings get an official online receipt when the handoff is confirmed.</p></div>'+
   (catKerb(draft.category)?'<div class="field"><label>Council pickup help</label>'+
-  '<button type="button" class="pill'+(draft.concierge?" pri":"")+'" data-act="concierge" data-id="'+(draft.concierge?"0":"1")+'">🚚 '+(draft.concierge?"Kerbit Concierge requested":"Ask Kerbit Concierge to coordinate pickup")+'</button>'+
+  '<button type="button" class="pill'+(draft.concierge?" pri":"")+'" data-act="concierge" data-id="'+(draft.concierge?"0":"1")+'"><span class="ic-inline">'+ICONS.truck+'</span> '+(draft.concierge?"Concierge requested":"Ask Dibs Concierge to coordinate pickup")+'</button>'+
   (draft.concierge?'<input id="f-concierge-addr" placeholder="e.g. 12 Smith Street, '+esc(me.suburb||"your suburb")+'" maxlength="200" style="margin-top:8px;width:100%" value="'+esc(draft.conciergeAddress||"")+'">'+
   '<p class="hint">Include the street number — this is the real collection address, kept private and separate from your public suburb.</p>':"")+
   '<p class="hint">Optional. We flag your listing for manual council-pickup coordination and keep your address private — it is never shown to other users, only used to help arrange collection.</p></div>':"")+
@@ -693,20 +704,20 @@ function viewPost(){
 function viewMine(){
   var mine=items.filter(function(i){return i.mine;});
   var claimed=items.filter(function(i){return i.claim&&i.claim.byMe&&!i.mine;});
-  var h='<h2 class="st reveal">My tags</h2><div id="feedList" class="itemgrid">'+(mine.length?mine.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">📌</span>Nothing posted yet — head to Post.</div>')+'</div>';
+  var h='<h2 class="st reveal">My stuff</h2><div id="feedList" class="itemgrid">'+(mine.length?mine.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.pin+'</span>Nothing posted yet — head to Post.</div>')+'</div>';
   if(claimed.length)h+='<h2 class="st reveal">Claimed by me</h2><div id="feedList2" class="itemgrid">'+claimed.map(function(it,i){return card(it,i);}).join("")+'</div>';
   return h;
 }
 function viewAlerts(){
   var h='<h2 class="st reveal">Notifications</h2>';
-  h+=notifs.length?notifs.map(function(n,i){return '<div class="ntf reveal'+(n.read?"":" unread")+'" style="transition-delay:'+((i%10)*40)+'ms">'+esc(n.text)+'<span class="when">'+fmtDT(n.at)+'</span></div>';}).join(""):'<div class="empty reveal"><span class="big">🔔</span>Nothing yet.</div>';
+  h+=notifs.length?notifs.map(function(n,i){return '<div class="ntf reveal'+(n.read?"":" unread")+'" style="transition-delay:'+((i%10)*40)+'ms">'+esc(n.text)+'<span class="when">'+fmtDT(n.at)+'</span></div>';}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.bell+'</span>Nothing yet.</div>';
   return h;
 }
 function impactHtml(){
   var rescued=items.filter(function(i){return i.status==="collected";}).length;
   var trucked=items.filter(function(i){return i.status==="collected_by_truck"||i.status==="booked_for_truck";}).length;
   var kg=Math.round((rescued*8+trucked*8));
-  return '<div class="impact reveal"><div class="t">♻️ Community impact</div><div class="row">'+
+  return '<div class="impact reveal"><div class="t"><span class="sect-ic">'+ICONS.leaf+'</span>Community impact</div><div class="row">'+
   '<div><span class="n">'+rescued+'</span><div class="l">rescued by neighbours</div></div>'+
   '<div><span class="n">'+trucked+'</span><div class="l">truck-handled</div></div>'+
   '<div><span class="n">~'+kg+'kg</span><div class="l">waste diverted</div></div>'+
@@ -726,10 +737,10 @@ function ecoPointsHtml(){
   '</div>';
 }
 function leaderboardHtml(){
-  if(!leaderboard)return '<fieldset class="reveal"><legend>🏆 Neighbourhood leaderboard</legend><p class="hint" style="margin:0">Loading…</p></fieldset>';
+  if(!leaderboard)return '<fieldset class="reveal"><legend><span class="sect-ic">'+ICONS.trophy+'</span>Neighbourhood leaderboard</legend><p class="hint" style="margin:0">Loading…</p></fieldset>';
   var rows=leaderboard.leaderboard||[];
-  if(!rows.length)return '<fieldset class="reveal"><legend>🏆 Neighbourhood leaderboard</legend><p class="hint" style="margin:0">Nobody\'s earned eco points in '+esc(leaderboard.suburb||me.suburb)+' yet — be the first!</p></fieldset>';
-  return '<fieldset class="reveal"><legend>🏆 Leaderboard — '+esc(leaderboard.suburb||me.suburb)+'</legend>'+
+  if(!rows.length)return '<fieldset class="reveal"><legend><span class="sect-ic">'+ICONS.trophy+'</span>Neighbourhood leaderboard</legend><p class="hint" style="margin:0">Nobody\'s earned eco points in '+esc(leaderboard.suburb||me.suburb)+' yet — be the first!</p></fieldset>';
+  return '<fieldset class="reveal"><legend><span class="sect-ic">'+ICONS.trophy+'</span>Leaderboard — '+esc(leaderboard.suburb||me.suburb)+'</legend>'+
   rows.map(function(r,i){
     return '<div class="lbrow'+(r.mine?" mine":"")+'"><span class="lbrank">#'+(i+1)+'</span><span class="lbname">'+esc(r.handle)+(r.trusted?' <span class="trustchip">✓</span>':'')+'</span><span class="lbtier">'+r.tier.icon+'</span><span class="lbpts">'+r.ecoPoints+'</span></div>';
   }).join("")+
@@ -739,33 +750,33 @@ function viewProfile(){
   var rcptRows=receipts.map(function(r){
     return '<div class="rcpt"><div><span class="rid">'+esc(r.id)+'</span><br><span style="color:var(--soft)">'+esc(r.title)+' · '+fmtDT(r.at)+'</span></div>'+
     '<div style="display:flex;gap:6px;align-items:center"><span class="ramt">'+money(r.amount)+'</span>'+
-    '<button class="pill gh sm" data-act="receipt" data-id="'+esc(r.id)+'">🧾 View</button></div></div>';
+    '<button class="pill gh sm" data-act="receipt" data-id="'+esc(r.id)+'">View</button></div></div>';
   }).join("");
 
-  var h='<h2 class="st reveal">Profile</h2><div class="pcard reveal"><div class="avatar">'+esc(me.handle.split("-")[1]?me.handle.split("-")[1][0]:"K")+'</div>'+
-  '<div style="font-weight:700;font-family:\'Outfit\',sans-serif;font-size:17px">'+esc(me.handle)+'</div>'+
+  var h='<h2 class="st reveal">Profile</h2><div class="pcard reveal"><div class="avatar">'+esc((me.handle||"D")[0])+'</div>'+
+  '<div style="font-weight:700;font-family:\'Manrope\',sans-serif;font-size:17px">'+esc(me.handle)+'</div>'+
   '<div style="font-size:12px;color:var(--soft)">'+esc(me.suburb)+' · your anonymous public identity</div>'+
-  '<div style="margin-top:12px"><button class="pill gh sm" data-act="new-handle">🔄 Generate new handle</button></div>'+
+  '<div style="margin-top:12px"><button class="pill gh sm" data-act="new-handle">Generate new handle</button></div>'+
   '<p class="hint">Handles are picked automatically — you can\'t choose one, so nothing about it can identify you.</p>'+
   (me.avgRating?'<div style="font-size:13px;margin-top:6px;color:var(--amber)">'+"★".repeat(Math.round(me.avgRating))+' ('+me.avgRating.toFixed(1)+')</div>':"")+
   '<div class="stats"><div class="stat"><span class="n">'+items.filter(function(i){return i.mine;}).length+'</span><span class="l">Posted</span></div>'+
   '<div class="stat"><span class="n">'+me.handoffs+'</span><span class="l">Handed off</span></div>'+
   '<div class="stat"><span class="n">'+me.truckSaved+'</span><span class="l">Truck-saved</span></div></div>'+
-  (me.trusted?'<div class="truststamp">✓ Trusted neighbour</div>':'<p class="hint" style="margin-top:14px">3 completed handoffs unlocks a trust stamp on your tags.</p>')+'</div>'+
+  (me.trusted?'<div class="truststamp">✓ Trusted neighbour</div>':'<p class="hint" style="margin-top:14px">3 completed handoffs unlocks a trust stamp on your listings.</p>')+'</div>'+
 
   ecoPointsHtml()+
   impactHtml()+
   leaderboardHtml()+
 
   '<fieldset class="reveal"><legend>Receipts</legend>'+
-  (rcptRows?rcptRows:'<p class="hint" style="margin:0">No receipts yet — a receipt is generated automatically whenever a priced tag\'s handoff is confirmed.</p>')+
+  (rcptRows?rcptRows:'<p class="hint" style="margin:0">No receipts yet — a receipt is generated automatically whenever a priced listing\'s handoff is confirmed.</p>')+
   '</fieldset>'+
 
   '<fieldset class="reveal"><legend>Privacy</legend><p class="hint" style="margin-top:0">Neighbours only ever see <strong>'+esc(me.handle)+'</strong>. Your email ('+esc(me.email)+') is used for login only — never shown, never shared, no phone number ever required. All pickup coordination happens inside the app.</p></fieldset>'+
 
   '<fieldset class="reveal"><legend>Your details</legend>'+
   '<div class="field"><label for="p-name">Private name (optional)</label><input id="p-name" maxlength="30" value="'+esc(me.name||"")+'"></div>'+
-  '<div class="field"><label for="p-suburb">Suburb</label><div class="field-inline"><input id="p-suburb" maxlength="40" value="'+esc(me.suburb)+'"><button type="button" class="locbtn" data-act="locate" data-target="p-suburb">📍 Locate</button></div></div>'+
+  '<div class="field"><label for="p-suburb">Suburb</label><div class="field-inline"><input id="p-suburb" maxlength="40" value="'+esc(me.suburb)+'"><button type="button" class="locbtn" data-act="locate" data-target="p-suburb">'+ICONS.locate+'<span>Locate</span></button></div></div>'+
   '<div class="field"><label for="p-state">State</label><select id="p-state">'+AU_STATES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===me.state?" selected":"")+'>'+s[1]+' ('+s[0]+')</option>';}).join("")+'</select></div>'+
   '<div class="field"><label for="p-day">Council truck day</label><select id="p-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===me.pickupWeekday?" selected":"")+'>'+w+'</option>';}).join("")+'</select>'+
   '<p class="hint">Drives the countdown and the auto-book-for-truck rule. Works for any suburb in Australia.</p></div>'+
@@ -784,21 +795,26 @@ function viewProfile(){
 
 /* ---------- render ---------- */
 function navItems(){
-  return [["feed","🏷️","Feed"],["post","➕","Post"],["mine","📌","My Tags"],["alerts","🔔","Alerts"],["profile","👤","Profile"]];
+  return [["feed",ICONS.all,"Shop"],["post",ICONS.plus,"Post"],["mine",ICONS.pin,"My stuff"],["alerts",ICONS.bell,"Alerts"],["profile",ICONS.user,"Profile"]];
 }
 function nextPickup(){
   var d=new Date();d.setHours(0,0,0,0);
   var diff=(me.pickupWeekday-d.getDay()+7)%7;d.setDate(d.getDate()+diff);
   return d.getTime();
 }
+function tickerHtml(){
+  var msgs=["Free to list","Australia-wide","Call dibs before the truck does","No names, just handles","Cars · couches · rentals · jobs · free stuff"];
+  var one=msgs.map(function(m){return '<span>'+m+'</span>';}).join("");
+  return '<div class="ticker" aria-hidden="true"><div class="tickertrack">'+one+one+'</div></div>';
+}
 function render(){
   var app=document.getElementById("app");
-  if(!me){app.innerHTML=viewAuth();bind();initScrollAnim();renderGoogleButton();return;}
+  if(!me){app.innerHTML=tickerHtml()+viewAuth();bind();initScrollAnim();renderGoogleButton();return;}
   var next=nextPickup();
   var d=daysTo(next);var lbl=d<=0?"Today":d===1?"Tomorrow":"in "+d+" days";
   var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():viewProfile();
-  var bell='<button class="iconbtn" data-tab="alerts" title="Notifications" style="position:relative">🔔'+(unread?'<span class="dock-badge js-badge">'+unread+'</span>':'')+'</button>';
-  var themesw='<div class="themesw" data-act="theme" role="button" aria-label="Toggle theme"><span class="knob">'+(theme()==="dark"?"🌙":"☀️")+'</span></div>';
+  var bell='<button class="iconbtn" data-tab="alerts" title="Notifications" style="position:relative">'+ICONS.bell+(unread?'<span class="dock-badge js-badge">'+unread+'</span>':'')+'</button>';
+  var themesw='<div class="themesw" data-act="theme" role="button" aria-label="Toggle theme"><span class="knob">'+(theme()==="dark"?ICONS.moon:ICONS.sun)+'</span></div>';
   var dock='<aside class="dock-desktop">'+
     '<div class="dbrand"><img src="/logo.svg" alt=""><span class="nm">'+APP+'</span></div>'+
     '<p class="dtag">'+TAGLINE+'</p>'+
@@ -818,7 +834,7 @@ function render(){
     (n[0]==="alerts"?'<span class="dock-badge js-badge" style="display:'+(unread?"":"none")+'">'+unread+'</span>':"")+'</button>';
   }).join("")+'</nav>';
   var compareBar=compareIds.length?'<div class="comparebar reveal"><span>'+compareIds.length+'/3 selected</span><button type="button" class="pill pri sm" data-act="opencompare">Compare</button><button type="button" class="iconlink" data-act="clearcompare" title="Clear">×</button></div>':"";
-  app.innerHTML='<div class="shell">'+dock+'<div class="content">'+mtop+dtop+banner+'<main id="main">'+mainHtml+'</main></div></div>'+compareBar+dockm;
+  app.innerHTML=tickerHtml()+'<div class="shell">'+dock+'<div class="content">'+mtop+dtop+banner+'<main id="main">'+mainHtml+'</main></div></div>'+compareBar+dockm;
   bind();
   initScrollAnim();
   positionDockLiquid();
@@ -888,7 +904,7 @@ function bind(){
     if(draft.priced){price=parseFloat((document.getElementById("f-price")||{}).value);if(isNaN(price)||price<1){toast("Enter a price of at least $1, or switch to Free.",true);return;}}
     var concierge=draft.concierge&&catKerb(draft.category);
     var conciergeAddress=concierge?((document.getElementById("f-concierge-addr")||{}).value||"").trim():"";
-    if(concierge&&!conciergeAddress){toast("Add a street address so Kerbit Concierge can coordinate pickup, or turn it off.",true);return;}
+    if(concierge&&!conciergeAddress){toast("Add a street address so Dibs Concierge can coordinate pickup, or turn it off.",true);return;}
     if(concierge&&!/\d/.test(conciergeAddress)){toast("That doesn't look like a street address — include the street number (e.g. 12 Smith Street).",true);return;}
     api("/items","POST",{title:title,desc:document.getElementById("f-desc").value.trim(),category:draft.category,price:price,platforms:draft.platforms,media:draft.media,concierge:concierge,conciergeAddress:conciergeAddress})
     .then(function(j){
@@ -948,12 +964,12 @@ function openReceipt(id){
   if(!w){toast("Allow pop-ups to view the receipt.",true);return;}
   var dark=theme()==="dark";
   w.document.write('<html><head><title>'+esc(r.id)+' — '+APP+' receipt</title>'+
-  '<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">'+
+  '<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">'+
   '<style>'+
   'body{font-family:Inter,sans-serif;background:'+(dark?"#0F1412":"#F5F3EC")+';color:'+(dark?"#EAEEE9":"#171F1B")+';padding:26px 16px;display:flex;justify-content:center}'+
   '.paper{background:'+(dark?"#1A211E":"#fff")+';border-radius:24px;max-width:380px;width:100%;box-shadow:0 18px 50px -18px rgba(0,0,0,.35);overflow:hidden}'+
   '.top{background:linear-gradient(120deg,#0E7A6A,#0A5C50);color:#fff;padding:24px 26px 20px}'+
-  '.top .app{display:flex;align-items:center;gap:10px;font-family:"Outfit",sans-serif;font-weight:800;font-size:19px}'+
+  '.top .app{display:flex;align-items:center;gap:10px;font-family:"Manrope",sans-serif;font-weight:800;font-size:19px}'+
   '.top .app img{width:34px;height:34px;border-radius:9px}'+
   '.top .sub{font-size:11px;opacity:.85;margin-top:3px}'+
   '.amt{font-family:"JetBrains Mono",monospace;font-size:36px;font-weight:700;margin:16px 0 2px}'+
@@ -983,7 +999,7 @@ function openReceipt(id){
   '<div class="row"><span class="k">Suburb</span><span class="v">'+esc(r.suburb||"")+'</span></div>'+
   '</div><div class="tear"></div>'+
   '<div class="foot">'+APP+' is a listing &amp; coordination service.<br>This receipt records the exchange between the two anonymous parties above.</div>'+
-  '<button class="print" onclick="window.print()">🖨️ Print / Save as PDF</button>'+
+  '<button class="print" onclick="window.print()">Print / Save as PDF</button>'+
   '</div></body></html>');
   w.document.close();
 }
@@ -991,7 +1007,7 @@ function act(action,id,el){
   if(action==="switch-auth"){authMode=authMode==="login"?"signup":"login";render();return;}
   if(action==="google-soon"){toast(googleClientId?"Google Sign-In is loading — try again in a second.":"Google Sign-In isn't connected yet — it needs a free Google Client ID.",true);return;}
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
-  if(action==="theme"){localStorage.setItem("kerbit-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
+  if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
   if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";render();return;}
   if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
@@ -1027,7 +1043,7 @@ function act(action,id,el){
     var ci=compareIds.indexOf(id);
     if(ci>-1)compareIds.splice(ci,1);
     else{
-      if(compareIds.length>=3){toast("You can compare up to 3 tags at a time.",true);return;}
+      if(compareIds.length>=3){toast("You can compare up to 3 items at a time.",true);return;}
       compareIds.push(id);
     }
     if(modalMiniMode==="compare"){if(compareIds.length)renderModal();else closeModalAll();}

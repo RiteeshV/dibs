@@ -23,11 +23,11 @@ const MAX_VIDEO_B64 = 3.6 * 1024 * 1024; // ~2.6MB binary
 /* Eco Points — a gamified points system, not real/redeemable rewards */
 const ECO_POINTS = { handoffPoster: 15, handoffClaimer: 10, truckdone: 5 };
 const ECO_TIERS = [
-  { min: 0, name: "Kerb Rookie", icon: "🌱" },
-  { min: 50, name: "Kerb Regular", icon: "♻️" },
-  { min: 150, name: "Kerb Champion", icon: "🌟" },
-  { min: 350, name: "Kerb Hero", icon: "🏆" },
-  { min: 700, name: "Kerb Legend", icon: "👑" },
+  { min: 0, name: "Newbie", icon: "" },
+  { min: 50, name: "Local", icon: "" },
+  { min: 150, name: "Big Deal", icon: "" },
+  { min: 350, name: "Legend", icon: "" },
+  { min: 700, name: "GOAT", icon: "" },
 ];
 function tierFor(points) {
   let cur = ECO_TIERS[0], next = ECO_TIERS[1] || null;
@@ -113,7 +113,7 @@ function getCookie(req, name) {
 
 const ANIMALS = ["Wombat","Koala","Magpie","Echidna","Dingo","Possum","Kooka","Wallaby","Quokka","Ibis","Galah","Bilby"];
 function anonHandle() {
-  return "Kerb-" + ANIMALS[Math.floor(Math.random() * ANIMALS.length)] + "-" + (100 + Math.floor(Math.random() * 900));
+  return ANIMALS[Math.floor(Math.random() * ANIMALS.length)] + "-" + (100 + Math.floor(Math.random() * 900));
 }
 function nextWeekdayOnOrAfter(fromTs, weekday) {
   const d = new Date(fromTs);
@@ -227,7 +227,7 @@ async function resolveItem(item, ownerProfile) {
     if (!item.truckReminderSent && msToPickup > 0 && msToPickup <= 86400000) {
       item.truckReminderSent = true;
       addHistory(item, "Reminder sent — truck day is within 24 hours");
-      await notify(item.userId, "⏰ Truck day for “" + item.title + "” is within 24 hours — still time for a neighbour to claim it, or put it out for the council.", item.id);
+      await notify(item.userId, "Truck day for “" + item.title + "” is within 24 hours — still time for a neighbour to claim it, or put it out for the council.", item.id);
       changed = true;
     }
     if (now() >= pickup) {
@@ -304,7 +304,7 @@ module.exports = async function handler(req, res) {
           handoffs: 0, truckSaved: 0, ratings: [], ecoPoints: 0,
           platformTokens: {}, createdAt: now(),
         };
-        await notify(user.id, "Welcome to Kerbside! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
+        await notify(user.id, "Welcome to Dibs! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
       }
       await db.put("users", user.id, user);
       const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
@@ -331,7 +331,7 @@ module.exports = async function handler(req, res) {
       };
       await db.put("users", user.id, user);
       const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
-      await notify(user.id, "Welcome to Kerbside! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
+      await notify(user.id, "Welcome to Dibs! You appear to neighbours only as " + user.handle + " — your email and identity are never shown.", null);
       return send(res, 200, { ok: true, me: meView(user) }, sessionCookie(token));
     }
 
@@ -426,8 +426,8 @@ module.exports = async function handler(req, res) {
         media, platforms, price, concierge,
         postedAt: now(), status: "available", claim: null, flags: [], rating: null, history: [],
       };
-      addHistory(item, "Posted to Kerbside by " + me.handle);
-      if (concierge) addHistory(item, "Kerbit Concierge requested — flagged for manual council-pickup coordination");
+      addHistory(item, "Posted to Dibs by " + me.handle);
+      if (concierge) addHistory(item, "Dibs Concierge requested — flagged for manual council-pickup coordination");
       if (platforms.length) {
         const withToken = platforms.filter((p) => me.platformTokens[p]);
         const without = platforms.filter((p) => !me.platformTokens[p]);
@@ -443,21 +443,21 @@ module.exports = async function handler(req, res) {
     const m = path.match(/^\/items\/([^/]+)(?:\/([a-z]+))?$/);
     if (m) {
       const item = await db.get("items", m[1]);
-      if (!item) return send(res, 404, { error: "That tag no longer exists." });
+      if (!item) return send(res, 404, { error: "That listing no longer exists." });
       const owner = await db.get("users", item.userId);
       if (await resolveItem(item, owner)) await db.put("items", item.id, item);
       const action = m[2];
 
       if (method === "DELETE" && !action) {
-        if (item.userId !== me.id) return send(res, 403, { error: "Not your tag." });
+        if (item.userId !== me.id) return send(res, 403, { error: "Not your listing." });
         await db.del("items", item.id);
         return send(res, 200, { ok: true });
       }
       if (method !== "POST") return send(res, 405, { error: "Bad method." });
 
       if (action === "claim") {
-        if (item.userId === me.id) return send(res, 400, { error: "You can't claim your own tag." });
-        if (underObservation(item)) return send(res, 400, { error: "This tag is under observation and can't be claimed right now." });
+        if (item.userId === me.id) return send(res, 400, { error: "You can't claim your own listing." });
+        if (underObservation(item)) return send(res, 400, { error: "This listing is under observation and can't be claimed right now." });
         if (item.status !== "available") {
           const why = item.status === "claimed" ? "someone claimed it first" : item.status === "booked_for_truck" ? "it's already booked for the truck" : "it's no longer available";
           addHistory(item, "A claim attempt failed — " + why, true);
@@ -476,7 +476,7 @@ module.exports = async function handler(req, res) {
         if (item.userId !== me.id) return send(res, 403, { error: "Only the poster can confirm the handoff." });
         if (item.status !== "claimed") return send(res, 400, { error: "Nothing to hand off." });
         item.status = "collected";
-        addHistory(item, "Handoff confirmed — the tag is torn off");
+        addHistory(item, "Handoff confirmed — the listing is closed");
         me.handoffs = (me.handoffs || 0) + 1;
         me.ecoPoints = (me.ecoPoints || 0) + ECO_POINTS.handoffPoster;
         if (item.claim && item.claim.byId) {
@@ -491,7 +491,7 @@ module.exports = async function handler(req, res) {
             posterId: me.id, posterHandle: me.handle,
             claimerId: item.claim.byId || null, claimerHandle: item.claim.byHandle || null,
             suburb: me.suburb, at: now(),
-            method: process.env.STRIPE_SECRET ? "Paid in-app (Stripe)" : "Paid at handoff — recorded by Kerbit",
+            method: process.env.STRIPE_SECRET ? "Paid in-app (Stripe)" : "Paid at handoff — recorded by Dibs",
           };
           await db.put("receipts", receipt.id, receipt);
           addHistory(item, "Online receipt " + receipt.id + " generated for $" + item.price);
@@ -505,8 +505,8 @@ module.exports = async function handler(req, res) {
       }
 
       if (action === "truckdone") {
-        if (item.userId !== me.id) return send(res, 403, { error: "Not your tag." });
-        if (item.status !== "booked_for_truck") return send(res, 400, { error: "This tag isn't booked for the truck." });
+        if (item.userId !== me.id) return send(res, 403, { error: "Not your listing." });
+        if (item.status !== "booked_for_truck") return send(res, 400, { error: "This listing isn't booked for the truck." });
         item.status = "collected_by_truck";
         addHistory(item, "Collected by the council truck");
         me.truckSaved = (me.truckSaved || 0) + 1;
@@ -519,7 +519,7 @@ module.exports = async function handler(req, res) {
       if (action === "flag") {
         const reason = String(body.reason || "Other").slice(0, 60);
         item.flags = item.flags || [];
-        if (item.flags.some((f) => f.byId === me.id)) return send(res, 400, { error: "You've already flagged this tag." });
+        if (item.flags.some((f) => f.byId === me.id)) return send(res, 400, { error: "You've already flagged this listing." });
         item.flags.push({ byId: me.id, reason, at: now() });
         addHistory(item, "Flagged: " + reason, true);
         const obs = underObservation(item);
@@ -582,7 +582,7 @@ module.exports = async function handler(req, res) {
 
     return send(res, 404, { error: "Not found." });
   } catch (err) {
-    console.error("Kerbside API error:", err);
+    console.error("Dibs API error:", err);
     return send(res, 500, { error: "Something went wrong on the server — try again." });
   }
 };

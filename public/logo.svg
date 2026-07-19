@@ -1,20 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <defs>
-    <style>
-      .tag{fill:#1E5C52;stroke:#153F38;stroke-width:6;}
-      .hole{fill:#E7DFC6;stroke:#153F38;stroke-width:5;}
-      .k{font:700 118px 'Courier New',monospace;fill:#F4EFDD;}
-      .dot{fill:#B98A2E;}
-    </style>
-  </defs>
-  <rect width="256" height="256" rx="56" fill="#E7DFC6"/>
-  <!-- claim-ticket tag, slightly rotated like an ink stamp -->
-  <g transform="rotate(-8 128 128)">
-    <path class="tag" d="M62 58 L170 58 Q178 58 184 64 L212 96 Q218 103 212 110 L184 192 Q181 200 172 200 L62 200 Q52 200 52 190 L52 68 Q52 58 62 58 Z"/>
-    <circle class="hole" cx="188" cy="93" r="13"/>
-    <text class="k" x="76" y="168">K</text>
-    <circle class="dot" cx="74" cy="82" r="9"/>
+  <!-- Dibs — "d!" monogram. Ink tile, white d, tilted cobalt exclamation. -->
+  <rect width="256" height="256" rx="56" fill="#101215"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round">
+    <circle cx="104" cy="156" r="44"/>
+    <line x1="148" y1="52" x2="148" y2="185"/>
   </g>
-  <!-- dashed perforation -->
-  <line x1="40" y1="228" x2="216" y2="228" stroke="#A93226" stroke-width="6" stroke-dasharray="14 10" stroke-linecap="round"/>
+  <g transform="rotate(10 201 120)" fill="#2743F0">
+    <rect x="186" y="50" width="30" height="102" rx="15"/>
+    <circle cx="201" cy="188" r="17"/>
+  </g>
 </svg>
