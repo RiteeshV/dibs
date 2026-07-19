@@ -30,6 +30,39 @@ var CATS=[
   ["other","Other","📦",1,0]
 ];
 function catKerb(catKey){var c=CATS.filter(function(x){return x[0]===catKey;})[0];return c?!!c[3]:true;}
+/* Minimal line-icon set (feather/lucide-style) — replaces emoji for a cleaner, non-AI-slop look */
+function ic(path){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>';}
+var ICONS={
+  search:ic('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/>'),
+  all:ic('<path d="M20.4 12.6 12.6 20.4a2 2 0 0 1-2.8 0l-6.2-6.2a2 2 0 0 1 0-2.8L11.4 3.6A2 2 0 0 1 12.8 3H19a2 2 0 0 1 2 2v6.2a2 2 0 0 1-.6 1.4z"/><circle cx="8.2" cy="8.2" r="1.2" fill="currentColor" stroke="none"/>'),
+  gift:ic('<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8"/><path d="M16.5 8a2.5 2.5 0 0 0 0-5C13 3 12 8 12 8"/>'),
+  vehicles:ic('<path d="M4 16.5V11l2.2-5A2 2 0 0 1 8.1 5h7.8a2 2 0 0 1 1.9 1.4L20 11v5.5"/><path d="M4 16.5h16v2a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1V17.5h-9V18.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><circle cx="7.5" cy="16.5" r="1.4"/><circle cx="16.5" cy="16.5" r="1.4"/><line x1="4" y1="11" x2="20" y2="11"/>'),
+  property_rent:ic('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1H10v-5h4v5h3.5a1 1 0 0 0 1-1v-9"/><circle cx="12" cy="15.5" r="1"/>'),
+  property_sale:ic('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-5.5A1.5 1.5 0 0 1 11 13h2a1.5 1.5 0 0 1 1.5 1.5V20"/><path d="M15 8.5V5h3v6"/>'),
+  furniture:ic('<path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M4 12.5a1.5 1.5 0 0 1 1.5-1.5h13A1.5 1.5 0 0 1 20 12.5V17H4z"/><path d="M5 17v3M19 17v3"/>'),
+  electronics:ic('<rect x="3" y="4.5" width="18" height="12" rx="1.5"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16.5" x2="12" y2="20"/>'),
+  clothing:ic('<path d="M8 4 4 7l2 3 2-1.3V20h8V8.7L18 10l2-3-4-3-2 2h-4z"/>'),
+  family:ic('<circle cx="8.5" cy="8" r="2.8"/><circle cx="16" cy="9" r="2.2"/><path d="M3 20v-1.5A3.5 3.5 0 0 1 6.5 15h4A3.5 3.5 0 0 1 14 18.5V20"/><path d="M15.5 20v-1.2a3 3 0 0 1 3-3H19a2.5 2.5 0 0 1 2.5 2.5V20"/>'),
+  classifieds:ic('<rect x="5" y="4" width="14" height="17" rx="1.5"/><path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1z"/><line x1="8.5" y1="11" x2="15.5" y2="11"/><line x1="8.5" y1="14.5" x2="15.5" y2="14.5"/><line x1="8.5" y1="18" x2="12.5" y2="18"/>'),
+  jobs:ic('<rect x="3" y="7.5" width="18" height="12" rx="1.5"/><path d="M8 7.5V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1.5"/><line x1="3" y1="12.5" x2="21" y2="12.5"/><path d="M10.5 12.5h3v2h-3z"/>'),
+  services:ic('<path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 1 5.4-5.4l-2.4 2.4-2-2z"/>'),
+  entertainment:ic('<rect x="3" y="6" width="18" height="13" rx="1.5"/><path d="M3 10h18"/><path d="M6.5 6 8.5 10M11.5 6l2 4M16.5 6l2 4"/>'),
+  books:ic('<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/>'),
+  kitchen:ic('<path d="M6 3v7a2.5 2.5 0 0 0 5 0V3"/><line x1="8.5" y1="10.5" x2="8.5" y2="21"/><path d="M16 3v6a2 2 0 0 1-2 2v0"/><line x1="16" y1="3" x2="16" y2="21"/>'),
+  toys:ic('<path d="M12 3 6 9l6 6 6-6z"/><path d="M6 15l6 6 6-6"/>'),
+  garden:ic('<path d="M12 21V10"/><path d="M12 10C7 10 5 6 5 3c4 0 7 2 7 7z"/><path d="M12 13c5 0 7-3.5 7-7-4 0-7 2-7 7z"/>'),
+  sports:ic('<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16M6.3 6.3l11.4 11.4M17.7 6.3 6.3 17.7"/>'),
+  pets:ic('<circle cx="7" cy="9" r="1.6"/><circle cx="12" cy="6.5" r="1.6"/><circle cx="17" cy="9" r="1.6"/><path d="M8.5 14c-2 .8-3 2.3-2.3 3.8 1 2 4 1.4 5.8.6 1.8.8 4.8 1.4 5.8-.6.7-1.5-.3-3-2.3-3.8-1.2-.5-1.8-1-3.5-1s-2.3.5-3.5 1z"/>'),
+  homegoods:ic('<path d="M12 3v6"/><path d="M7 9h10l1.5 4.5a2 2 0 0 1-1.9 2.5H7.4a2 2 0 0 1-1.9-2.5z"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/>'),
+  homeimprove:ic('<path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 1 5.4-5.4l-2.4 2.4-2-2z"/><path d="M4 4l4 1 1 4"/>'),
+  music:ic('<circle cx="6.5" cy="18" r="2.2"/><circle cx="17" cy="16" r="2.2"/><path d="M8.7 18V5.5L19.2 4v11.5"/>'),
+  office:ic('<rect x="4" y="8" width="16" height="10" rx="1.5"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="4" y1="13" x2="20" y2="13"/>'),
+  hobbies:ic('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.7 2-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1.1.9-2 2-2H17a4 4 0 0 0 4-4c0-4.4-4-7.8-9-7.8z"/><circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="7" r="1" fill="currentColor" stroke="none"/>'),
+  other:ic('<path d="M21 8.5 12 3 3 8.5 12 14z"/><path d="M3 8.5V16l9 5.5 9-5.5V8.5"/><line x1="12" y1="14" x2="12" y2="21.5"/>'),
+  truck:ic('<rect x="2.5" y="8" width="12" height="9" rx="1"/><path d="M14.5 11h3.5l3 3v3h-6.5z"/><circle cx="6.5" cy="18" r="1.6"/><circle cx="16.5" cy="18" r="1.6"/>'),
+  compare:ic('<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/>')
+};
+function catIcon(key){return ICONS[key]||ICONS.other;}
 var CAT_SYNONYMS={
   vehicles:["car","cars","vehicle","vehicles","ute","suv","4wd","motorbike","motorcycle","van","auto","hatch","sedan","wagon"],
   property_rent:["rent","rental","lease","room","granny","share","tenant"],
@@ -79,17 +112,52 @@ function psearchSites(activeCat){
   if(activeCat==="jobs")sites["Indeed AU"]=EXTRA_PSEARCH_URLS["Indeed AU"];
   return sites;
 }
-var SUBURB_EXAMPLES=["Wentworthville","Bondi","St Kilda","Fremantle","Toowong","Glenelg","Fortitude Valley","New Farm","Subiaco","Northcote","Prahran","Coogee","Newtown","Fitzroy","Semaphore","Kelvin Grove"];
-var suburbExample=SUBURB_EXAMPLES[Math.floor(Math.random()*SUBURB_EXAMPLES.length)];
+var SUBURB_EXAMPLES_BY_STATE={
+  NSW:["Wentworthville","Bondi","Newtown","Parramatta","Coogee","Chatswood","Manly"],
+  VIC:["St Kilda","Northcote","Fitzroy","Prahran","Brunswick","Carlton","Footscray"],
+  QLD:["Fortitude Valley","New Farm","Toowong","West End","Paddington","Kelvin Grove","Chermside"],
+  WA:["Fremantle","Subiaco","Leederville","Cottesloe","Scarborough","Victoria Park"],
+  SA:["Glenelg","Norwood","Unley","Prospect","Semaphore","Henley Beach"],
+  TAS:["Battery Point","North Hobart","Sandy Bay","Launceston","Glenorchy"],
+  ACT:["Braddon","Kingston","Manuka","Dickson","Belconnen"],
+  NT:["Nightcliff","Parap","Fannie Bay","Stuart Park","Palmerston"]
+};
+var suburbPhState="NSW",suburbPhIdx=Math.floor(Math.random()*7),suburbPhTimer=null;
+function suburbPlaceholderText(){var list=SUBURB_EXAMPLES_BY_STATE[suburbPhState]||SUBURB_EXAMPLES_BY_STATE.NSW;return list[suburbPhIdx%list.length];}
+function startSuburbPlaceholderRotation(){
+  clearInterval(suburbPhTimer);
+  suburbPhTimer=setInterval(function(){
+    suburbPhIdx++;
+    var el=document.getElementById("a-suburb");
+    if(el&&document.activeElement!==el&&!el.value)el.placeholder="e.g. "+suburbPlaceholderText();
+  },3000);
+}
 var AU_STATES=[["NSW","New South Wales"],["VIC","Victoria"],["QLD","Queensland"],["WA","Western Australia"],["SA","South Australia"],["TAS","Tasmania"],["ACT","Australian Capital Territory"],["NT","Northern Territory"]];
 var HERO_SLIDES=[
   {img:"https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=1600&q=70&auto=format&fit=crop",eyebrow:"Vehicles",headline:"Find your next ride",cat:"vehicles"},
   {img:"https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1600&q=70&auto=format&fit=crop",eyebrow:"Furniture",headline:"Give it a new home",cat:"furniture"},
-  {img:"https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1600&q=70&auto=format&fit=crop",eyebrow:"Property",headline:"A room, a rental, a start",cat:"property_rent"},
+  {img:"https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1600&q=70&auto=format&fit=crop",eyebrow:"Property for rent",headline:"A room, a rental, a start",cat:"property_rent"},
+  {img:"https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1600&q=70&auto=format&fit=crop",eyebrow:"Property for sale",headline:"Somewhere to call home",cat:"property_sale"},
+  {img:"https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=1600&q=70&auto=format&fit=crop",eyebrow:"Jobs",headline:"Your next role, nearby",cat:"jobs"},
+  {img:"https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1600&q=70&auto=format&fit=crop",eyebrow:"Services",headline:"Get a hand from a neighbour",cat:"services"},
+  {img:"https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=1600&q=70&auto=format&fit=crop",eyebrow:"Electronics",headline:"Tech that still has life in it",cat:"electronics"},
   {img:"https://images.unsplash.com/photo-1466692476868-aef1dfb1e735?w=1600&q=70&auto=format&fit=crop",eyebrow:"Garden & Outdoors",headline:"Grow something good",cat:"garden"},
   {img:"https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1600&q=70&auto=format&fit=crop",eyebrow:"Everything else",headline:"One app, every kerb",cat:"all"}
 ];
 var heroIdx=0,heroTimer=null;
+var SEARCH_EXAMPLES=["car under 15000","free couch","3br rental Parramatta","handyman services","gaming console","garden tools","free moving boxes","toddler toys","electric guitar","vintage bike","office desk","house for sale"];
+var searchPhIdx=0,searchPhTimer=null;
+function searchPlaceholderText(){return "Try “"+SEARCH_EXAMPLES[searchPhIdx%SEARCH_EXAMPLES.length]+"”…";}
+function startSearchPlaceholderRotation(){
+  clearInterval(searchPhTimer);
+  searchPhTimer=setInterval(function(){
+    searchPhIdx=(searchPhIdx+1)%SEARCH_EXAMPLES.length;
+    if(tab==="feed"){
+      var el=document.getElementById("f-search");
+      if(el&&document.activeElement!==el&&!el.value)el.placeholder=searchPlaceholderText();
+    }
+  },3500);
+}
 function heroHtml(){
   var s=HERO_SLIDES[heroIdx%HERO_SLIDES.length];
   return '<div class="hero reveal" id="heroBox" style="background-image:linear-gradient(180deg,rgba(10,20,16,.05) 40%,rgba(10,20,16,.82)),url(&quot;'+s.img+'&quot;)" data-act="herogo" data-id="'+esc(s.cat)+'">'+
@@ -117,9 +185,13 @@ function startHeroRotation(){
 }
 
 var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="login", dbMode="demo", feedScope="suburb", searchQ="", catFilter="all", showAllCats=false;
+var filterMin="",filterMax="",filterKeyword="";
+var CAT_FILTER_LABEL={vehicles:"Make or model",property_rent:"Bedrooms or feature",property_sale:"Bedrooms or feature",jobs:"Role or industry",services:"Type of service",classifieds:"Keyword"};
+var CAT_FILTER_PLACEHOLDER={vehicles:"e.g. Corolla",property_rent:"e.g. 2 bedroom",property_sale:"e.g. 3 bedroom",jobs:"e.g. barista",services:"e.g. cleaning"};
 var googleClientId=null, ebayEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
 var draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false,concierge:false};
 var modalItemId=null, modalMiniMode=null, modalMiniId=null;
+var compareIds=[];
 var io=null;
 
 function esc(s){return s==null?"":String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
@@ -141,6 +213,7 @@ function api(path,method,body){
 function boot(){
   applyTheme();
   bindModalOnce();
+  startSuburbPlaceholderRotation();
   window.addEventListener("resize",function(){if(me)positionDockLiquid();});
   api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
@@ -153,6 +226,7 @@ function refresh(){
 var pollTimer=null;
 function startPolling(){
   startHeroRotation();
+  startSearchPlaceholderRotation();
   clearInterval(pollTimer);
   pollTimer=setInterval(function(){
     if(!me)return;
@@ -246,8 +320,8 @@ function viewAuthSignup(){
     '<form id="authForm">'+
     '<div class="field"><label for="a-email">Email</label><input id="a-email" type="email" required autocomplete="email"></div>'+
     '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" required minlength="6" autocomplete="new-password"></div>'+
-    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. '+esc(suburbExample)+'" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
-    '<div class="field"><label for="a-state">State</label><select id="a-state">'+AU_STATES.map(function(s){return '<option value="'+s[0]+'">'+s[1]+' ('+s[0]+')</option>';}).join("")+'</select></div>'+
+    '<div class="field"><label for="a-suburb">Suburb</label><div class="field-inline"><input id="a-suburb" placeholder="e.g. '+esc(suburbPlaceholderText())+'" maxlength="40"><button type="button" class="locbtn" data-act="locate" data-target="a-suburb">📍 Locate</button></div><p class="hint">Or just type it — change it any time in Profile.</p></div>'+
+    '<div class="field"><label for="a-state">State</label><select id="a-state">'+AU_STATES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===suburbPhState?" selected":"")+'>'+s[1]+' ('+s[0]+')</option>';}).join("")+'</select></div>'+
     '<div class="field"><label for="a-day">Council truck day</label><select id="a-day">'+WD.map(function(w,i){return '<option value="'+i+'"'+(i===3?" selected":"")+'>'+w+'</option>';}).join("")+'</select></div>'+
     '<button type="submit" class="pill pri block">Create account</button>'+
     '</form>'+
@@ -285,8 +359,7 @@ function stampFor(it){
 }
 function mediaThumb(it){
   if(it.media&&it.media.length){var m=it.media[0];return m.type==="video"?'<video src="'+m.data+'" muted playsinline></video>':'<img src="'+m.data+'" alt="">';}
-  var c=CATS.filter(function(x){return x[0]===it.category;})[0];
-  return '<div class="emoji">'+(c?c[2]:"📦")+'</div>';
+  return '<div class="emoji">'+catIcon(it.category)+'</div>';
 }
 function stubFor(it){
   var concierge=it.mine&&it.concierge&&it.concierge.requested?'🚚 Kerbit Concierge requested — ':'';
@@ -351,6 +424,7 @@ function card(it,idx){
       '<div class="cm"><span>'+esc(it.poster.handle)+(it.poster.trusted?' <span class="trustchip">✓</span>':'')+'</span><span>·</span><span>'+esc(it.poster.suburb)+'</span></div>'+
     '</div>'+
     '<div class="cfoot"><span class="stubtxt">'+stubFor(it)+'</span>'+primaryAction(it)+
+    '<button class="iconlink'+(compareIds.indexOf(it.id)>-1?" on":"")+'" data-act="togglecompare" data-id="'+it.id+'" title="Add to compare">'+ICONS.compare+'</button>'+
     '<button class="iconlink" data-act="open" data-id="'+it.id+'" title="Details">ℹ</button></div>'+
   '</article>';
 }
@@ -369,9 +443,38 @@ function closeModalAll(){modalItemId=null;modalMiniMode=null;modalMiniId=null;re
 function renderModal(){
   var ov=document.getElementById("modalOverlay");
   if(!modalItemId&&!modalMiniMode){ov.classList.remove("show");ov.innerHTML="";return;}
-  var html=modalMiniMode==="flag"?flagModalHtml():modalMiniMode==="rate"?rateModalHtml():itemModalHtml(modalItemId);
+  var html=modalMiniMode==="flag"?flagModalHtml():modalMiniMode==="rate"?rateModalHtml():modalMiniMode==="compare"?compareModalHtml():itemModalHtml(modalItemId);
   ov.innerHTML='<div class="modal">'+html+'</div>';
   ov.classList.add("show");
+  if(modalItemId&&!modalMiniMode){
+    var it=items.filter(function(x){return x.id===modalItemId;})[0];
+    if(it&&it.poster&&it.poster.suburb)loadSuburbMap(it.poster.suburb,"map-"+it.id);
+  }
+}
+var SUBURB_GEO_CACHE={};
+function loadSuburbMap(suburb,boxId){
+  var box=document.getElementById(boxId);
+  if(!box)return;
+  function showFallback(){
+    var q=encodeURIComponent(suburb+", Australia");
+    box.innerHTML='<a class="pill gh sm" href="https://www.openstreetmap.org/search?query='+q+'" target="_blank" rel="noopener">View '+esc(suburb)+' on the map ↗</a>';
+  }
+  function render(geo){
+    var d=0.045;
+    var bbox=(geo.lon-d)+","+(geo.lat-d)+","+(geo.lon+d)+","+(geo.lat+d);
+    box.innerHTML='<iframe title="Map of '+esc(suburb)+'" loading="lazy" style="border:0;width:100%;height:170px;border-radius:14px" src="https://www.openstreetmap.org/export/embed.html?bbox='+bbox+'&marker='+geo.lat+','+geo.lon+'&layer=mapnik"></iframe>'+
+      '<p class="hint" style="margin:4px 0 0">Approximate area only — exact location is shared after a claim is confirmed.</p>';
+  }
+  if(SUBURB_GEO_CACHE[suburb]){render(SUBURB_GEO_CACHE[suburb]);return;}
+  fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q="+encodeURIComponent(suburb+", Australia"))
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(!j||!j.length){showFallback();return;}
+      var geo={lat:Number(j[0].lat),lon:Number(j[0].lon)};
+      SUBURB_GEO_CACHE[suburb]=geo;
+      if(document.getElementById(boxId))render(geo);
+    })
+    .catch(showFallback);
 }
 function itemModalHtml(id){
   var it=items.filter(function(x){return x.id===id;})[0];
@@ -381,8 +484,7 @@ function itemModalHtml(id){
   if(it.media&&it.media.length){
     mediaHtml='<div class="gallery-scroll">'+it.media.map(function(m){return m.type==="video"?'<span><video src="'+m.data+'" controls muted playsinline></video></span>':'<span><img src="'+m.data+'" alt=""></span>';}).join("")+'</div>';
   }else{
-    var c=CATS.filter(function(x){return x[0]===it.category;})[0];
-    mediaHtml='<div class="emoji">'+(c?c[2]:"📦")+'</div>';
+    mediaHtml='<div class="emoji">'+catIcon(it.category)+'</div>';
   }
   var trackHtml='<div class="track"><p class="tkt">Tracking</p>'+(it.history||[]).map(function(h){
     return '<div class="tki'+(h.alert?" alert":"")+'">'+esc(h.label)+'<span class="when">'+fmtDT(h.at)+'</span></div>';
@@ -393,6 +495,7 @@ function itemModalHtml(id){
     '<span class="modal-price'+(it.price>0?"":" free")+'">'+(it.price>0?money(it.price)+" · cash-free at handoff":"Free")+'</span>'+
     '<h3 class="modal-title">'+esc(it.title)+'</h3>'+
     '<div class="modal-meta"><span>'+esc(it.poster.handle)+(it.poster.trusted?' <span class="trustchip">✓ trusted</span>':'')+'</span><span>·</span><span>📍 '+esc(it.poster.suburb)+'</span><span>·</span><span>'+fmtD(it.postedAt)+'</span></div>'+
+    '<div class="modal-map" id="map-'+it.id+'"><p class="hint" style="margin:0">Loading map…</p></div>'+
     (it.desc?'<p class="modal-desc">'+esc(it.desc)+'</p>':'')+
     (it.platforms.length?'<div class="chips">'+it.platforms.map(function(p){return '<span class="chip">'+esc(p)+'</span>';}).join("")+'</div>':"")+
     '<div class="modal-stub">'+stubFor(it)+'</div>'+
@@ -407,6 +510,26 @@ function flagModalHtml(){
   '<div class="optlist">'+FLAG_REASONS.map(function(r){return '<button data-act="flag-reason" data-reason="'+esc(r)+'">'+esc(r)+'</button>';}).join("")+'</div>'+
   '</div>';
 }
+function compareModalHtml(){
+  var its=compareIds.map(function(id){return items.filter(function(x){return x.id===id;})[0];}).filter(Boolean);
+  if(!its.length)return '<button class="modal-close" data-act="close-modal">×</button><div style="padding:40px 20px;text-align:center" class="hint">Nothing to compare — tap the compare icon on a tag first.</div>';
+  return '<button class="modal-close" data-act="close-modal">×</button>'+
+    '<div class="modal-body"><h3 class="modal-title">Compare '+its.length+' tag'+(its.length>1?"s":"")+'</h3>'+
+    '<div class="comparegrid">'+its.map(function(it){
+      var c=CATS.filter(function(x){return x[0]===it.category;})[0];
+      return '<div class="comparecard">'+
+        '<div class="cmp-media">'+mediaThumb(it)+'</div>'+
+        '<div class="cmp-title">'+esc(it.title)+'</div>'+
+        '<div class="cmp-price'+(it.price>0?"":" free")+'">'+(it.price>0?money(it.price):"Free")+'</div>'+
+        '<div class="cmp-row"><span>Category</span><b>'+(c?esc(c[1]):"Other")+'</b></div>'+
+        '<div class="cmp-row"><span>Suburb</span><b>'+esc(it.poster.suburb)+'</b></div>'+
+        '<div class="cmp-row"><span>Posted</span><b>'+fmtD(it.postedAt)+'</b></div>'+
+        '<div class="cmp-row"><span>Poster</span><b>'+esc(it.poster.handle)+'</b></div>'+
+        '<button type="button" class="pill gh sm" data-act="open" data-id="'+it.id+'">View details</button>'+
+        '<button type="button" class="pill dgr sm" data-act="togglecompare" data-id="'+it.id+'">Remove</button>'+
+      '</div>';
+    }).join("")+'</div></div>';
+}
 function rateModalHtml(){
   return '<button class="modal-close" data-act="close-modal">×</button>'+
   '<div class="modal-body" style="text-align:center"><h3 class="modal-title">Rate this handoff</h3>'+
@@ -420,7 +543,12 @@ function feedItems(){
   var act=items.filter(function(i){return !i.mine&&(i.status==="available"||i.status==="claimed"||i.status==="booked_for_truck")&&!i.observation;});
   if(feedScope==="suburb")act=act.filter(function(i){return (i.poster.suburb||"").toLowerCase()===(me.suburb||"").toLowerCase();});
   if(catFilter==="free")act=act.filter(function(i){return i.price===0;});
-  else if(catFilter!=="all")act=act.filter(function(i){return i.category===catFilter;});
+  else if(catFilter!=="all"){
+    act=act.filter(function(i){return i.category===catFilter;});
+    if(filterMin!=="")act=act.filter(function(i){return i.price>=Number(filterMin);});
+    if(filterMax!=="")act=act.filter(function(i){return i.price<=Number(filterMax);});
+    if(filterKeyword){var fkw=filterKeyword.toLowerCase();act=act.filter(function(i){return (i.title+" "+(i.desc||"")).toLowerCase().indexOf(fkw)>-1;});}
+  }
   if(searchQ){
     var sp=parseSmartQuery(searchQ);
     act=act.filter(function(i){
@@ -437,22 +565,33 @@ function feedItems(){
   }
   return act;
 }
+function filterPanelHtml(){
+  if(catFilter==="all"||catFilter==="free")return "";
+  var kwLabel=CAT_FILTER_LABEL[catFilter]||"Keyword";
+  var kwPh=CAT_FILTER_PLACEHOLDER[catFilter]||"Refine your search";
+  return '<div class="filterpanel reveal">'+
+    '<div class="fprow"><label>Min $</label><input type="number" id="f-min" min="0" value="'+esc(filterMin)+'" placeholder="0"></div>'+
+    '<div class="fprow"><label>Max $</label><input type="number" id="f-max" min="0" value="'+esc(filterMax)+'" placeholder="Any"></div>'+
+    '<div class="fprow grow"><label>'+esc(kwLabel)+'</label><input type="text" id="f-kw" value="'+esc(filterKeyword)+'" placeholder="'+esc(kwPh)+'"></div>'+
+    '<button type="button" class="pill gh sm" data-act="clearfilters">Clear</button>'+
+  '</div>';
+}
 function feedListHtml(){
   var act=feedItems();
-  return act.length?act.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">🏷️</span>'+(searchQ?'Nothing matches "'+esc(searchQ)+'" on Kerbit — try the platform search below.':(feedScope==="suburb"?'No tags in '+esc(me.suburb)+' right now — try 🇦🇺 All Australia, or share the app link!':'No tags right now — share the app link so people can post!'))+'</div>';
+  return act.length?act.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.all+'</span>'+(searchQ?'Nothing matches "'+esc(searchQ)+'" on Kerbit — try the platform search below.':(feedScope==="suburb"?'No tags in '+esc(me.suburb)+' right now — try 🇦🇺 All Australia, or share the app link!':'No tags right now — share the app link so people can post!'))+'</div>';
 }
 function viewFeed(){
   var demo=dbMode==="demo"?'<div class="note demo-warn reveal">⚠️ Pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
-  var search='<div class="searchwrap reveal"><span class="sic">🔍</span><input id="f-search" placeholder="Try “car under 15000”, “free couch”…" value="'+esc(searchQ)+'" autocomplete="off"></div>';
+  var search='<div class="searchwrap reveal"><span class="sic">'+ICONS.search+'</span><input id="f-search" placeholder="'+esc(searchPlaceholderText())+'" value="'+esc(searchQ)+'" autocomplete="off"></div>';
   var loc='<div class="locrow reveal">'+
     '<button class="locchip'+(feedScope==="suburb"?" on":"")+'" data-act="scope" data-id="suburb">📍 '+esc(me.suburb)+'</button>'+
     '<button class="locchip'+(feedScope==="all"?" on":"")+'" data-act="scope" data-id="all">🇦🇺 All Australia</button>'+
   '</div>';
   var catList=showAllCats?CATS:CATS.filter(function(c){return c[4];});
   var catrail='<div class="catrail reveal">'+
-    '<button class="cattile'+(catFilter==="all"?" on":"")+'" data-act="catf" data-id="all"><span class="circ">🏷️</span><span class="lbl">All</span></button>'+
-    '<button class="cattile'+(catFilter==="free"?" on":"")+'" data-act="catf" data-id="free"><span class="circ">🎁</span><span class="lbl">Free stuff</span></button>'+
-    catList.map(function(c){return '<button class="cattile'+(catFilter===c[0]?" on":"")+'" data-act="catf" data-id="'+c[0]+'"><span class="circ">'+c[2]+'</span><span class="lbl">'+c[1]+'</span></button>';}).join("")+
+    '<button class="cattile'+(catFilter==="all"?" on":"")+'" data-act="catf" data-id="all"><span class="circ">'+ICONS.all+'</span><span class="lbl">All</span></button>'+
+    '<button class="cattile'+(catFilter==="free"?" on":"")+'" data-act="catf" data-id="free"><span class="circ">'+ICONS.gift+'</span><span class="lbl">Free stuff</span></button>'+
+    catList.map(function(c){return '<button class="cattile'+(catFilter===c[0]?" on":"")+'" data-act="catf" data-id="'+c[0]+'"><span class="circ">'+catIcon(c[0])+'</span><span class="lbl">'+c[1]+'</span></button>';}).join("")+
     '<button class="cattile" data-act="togglecats"><span class="circ">'+(showAllCats?"–":"+")+'</span><span class="lbl">'+(showAllCats?"Less":"More")+'</span></button>'+
   '</div>';
   var searchSp=searchQ?parseSmartQuery(searchQ):null;
@@ -466,7 +605,7 @@ function viewFeed(){
         ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU 🔎</button>'
         :'<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
     }).join("")+'</div></div>';
-  return demo+heroHtml()+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
+  return demo+heroHtml()+'<h2 class="st reveal">Nearby tags</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
 }
 function ebayPanelHtml(){
   if(ebayLoading)return '<div class="psearch reveal"><p class="hint" style="margin:0">🔎 Searching eBay AU…</p></div>';
@@ -488,7 +627,7 @@ function viewPost(){
   '<div class="field"><label>Photos &amp; video (up to 4)</label><input type="file" id="f-media" accept="image/*,video/*" multiple style="font-size:12px">'+
   '<div class="mediarow" id="mediaRow">'+draft.media.map(function(m,i){return '<span class="mth">'+(m.type==="video"?'<video src="'+m.data+'" muted></video>':'<img src="'+m.data+'">')+'<button type="button" class="x" data-act="delmedia" data-id="'+i+'">×</button></span>';}).join("")+'</div>'+
   '<p class="hint">Photos are resized on your device. Videos up to ~2.5MB for the pilot.</p></div>'+
-  '<div class="field"><label>Category</label><div class="cats">'+CATS.map(function(c){return '<button type="button" class="cat'+(draft.category===c[0]?" on":"")+'" data-act="cat" data-id="'+c[0]+'"><span class="ic">'+c[2]+'</span>'+c[1]+'</button>';}).join("")+'</div></div>'+
+  '<div class="field"><label>Category</label><div class="cats">'+CATS.map(function(c){return '<button type="button" class="cat'+(draft.category===c[0]?" on":"")+'" data-act="cat" data-id="'+c[0]+'"><span class="ic">'+catIcon(c[0])+'</span>'+c[1]+'</button>';}).join("")+'</div></div>'+
   '<div class="field"><label for="f-desc">Condition</label><textarea id="f-desc" maxlength="240" placeholder="Works fine, one leg slightly wobbly...">'+esc(draft.desc||"")+'</textarea></div>'+
   '<div class="field"><label>Give away or sell?</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
   '<button type="button" class="pill'+(!draft.priced?" pri":"")+'" data-act="priced" data-id="0">Free</button>'+
@@ -497,7 +636,8 @@ function viewPost(){
   '<p class="hint">Priced tags get an official online receipt when the handoff is confirmed.</p></div>'+
   (catKerb(draft.category)?'<div class="field"><label>Council pickup help</label>'+
   '<button type="button" class="pill'+(draft.concierge?" pri":"")+'" data-act="concierge" data-id="'+(draft.concierge?"0":"1")+'">🚚 '+(draft.concierge?"Kerbit Concierge requested":"Ask Kerbit Concierge to coordinate pickup")+'</button>'+
-  (draft.concierge?'<input id="f-concierge-addr" placeholder="Street address (private — never shown to other users)" maxlength="200" style="margin-top:8px;width:100%" value="'+esc(draft.conciergeAddress||"")+'">':"")+
+  (draft.concierge?'<input id="f-concierge-addr" placeholder="e.g. 12 Smith Street, '+esc(me.suburb||"your suburb")+'" maxlength="200" style="margin-top:8px;width:100%" value="'+esc(draft.conciergeAddress||"")+'">'+
+  '<p class="hint">Include the street number — this is the real collection address, kept private and separate from your public suburb.</p>':"")+
   '<p class="hint">Optional. We flag your listing for manual council-pickup coordination and keep your address private — it is never shown to other users, only used to help arrange collection.</p></div>':"")+
   '<div class="field"><label>Also cross-post to</label><div class="pchecks">'+PLATFORMS.map(function(p){
     var on=draft.platforms.indexOf(p)>-1;var tok=me.platformsConnected.indexOf(p)>-1;
@@ -632,7 +772,8 @@ function render(){
     return '<button data-tab="'+n[0]+'" class="'+(tab===n[0]?"on":"")+(n[0]==="post"?" post":"")+'"><span class="ic">'+n[1]+'</span>'+(n[0]==="post"?"":n[2])+
     (n[0]==="alerts"?'<span class="dock-badge js-badge" style="display:'+(unread?"":"none")+'">'+unread+'</span>':"")+'</button>';
   }).join("")+'</nav>';
-  app.innerHTML='<div class="shell">'+dock+'<div class="content">'+mtop+dtop+banner+'<main id="main">'+mainHtml+'</main></div></div>'+dockm;
+  var compareBar=compareIds.length?'<div class="comparebar reveal"><span>'+compareIds.length+'/3 selected</span><button type="button" class="pill pri sm" data-act="opencompare">Compare</button><button type="button" class="iconlink" data-act="clearcompare" title="Clear">×</button></div>':"";
+  app.innerHTML='<div class="shell">'+dock+'<div class="content">'+mtop+dtop+banner+'<main id="main">'+mainHtml+'</main></div></div>'+compareBar+dockm;
   bind();
   initScrollAnim();
   positionDockLiquid();
@@ -664,9 +805,20 @@ function bind(){
       if(!e.target.checked&&i>-1)draft.platforms.splice(i,1);
     }
     if(e.target.id==="f-media")addMedia(e.target.files);
+    if(e.target.id==="a-state"){
+      suburbPhState=e.target.value;
+      suburbPhIdx=Math.floor(Math.random()*(SUBURB_EXAMPLES_BY_STATE[suburbPhState]||SUBURB_EXAMPLES_BY_STATE.NSW).length);
+      var sub=document.getElementById("a-suburb");
+      if(sub&&!sub.value)sub.placeholder="e.g. "+suburbPlaceholderText();
+    }
   };
   var fs=document.getElementById("f-search");
   if(fs)fs.oninput=function(){searchQ=fs.value;var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();};
+  var fmin=document.getElementById("f-min"),fmax=document.getElementById("f-max"),fkw=document.getElementById("f-kw");
+  function refreshFeedList(){var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();}
+  if(fmin)fmin.oninput=function(){filterMin=fmin.value;refreshFeedList();};
+  if(fmax)fmax.oninput=function(){filterMax=fmax.value;refreshFeedList();};
+  if(fkw)fkw.oninput=function(){filterKeyword=fkw.value;refreshFeedList();};
   var af=document.getElementById("authForm");
   if(af)af.onsubmit=function(e){
     e.preventDefault();
@@ -684,6 +836,7 @@ function bind(){
     var concierge=draft.concierge&&catKerb(draft.category);
     var conciergeAddress=concierge?((document.getElementById("f-concierge-addr")||{}).value||"").trim():"";
     if(concierge&&!conciergeAddress){toast("Add a street address so Kerbit Concierge can coordinate pickup, or turn it off.",true);return;}
+    if(concierge&&!/\d/.test(conciergeAddress)){toast("That doesn't look like a street address — include the street number (e.g. 12 Smith Street).",true);return;}
     api("/items","POST",{title:title,desc:document.getElementById("f-desc").value.trim(),category:draft.category,price:price,platforms:draft.platforms,media:draft.media,concierge:concierge,conciergeAddress:conciergeAddress})
     .then(function(j){
       draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false,concierge:false};
@@ -787,10 +940,11 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("kerbit-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
-  if(action==="catf"){catFilter=id;render();return;}
+  if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";render();return;}
   if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
+  if(action==="clearfilters"){filterMin="";filterMax="";filterKeyword="";render();return;}
   if(action==="herogo"){
-    catFilter=id;tab="feed";
+    catFilter=id;tab="feed";filterMin="";filterMax="";filterKeyword="";
     var cdef=CATS.filter(function(c){return c[0]===id;})[0];
     if(cdef&&!cdef[4])showAllCats=true;
     render();
@@ -816,6 +970,19 @@ function act(action,id,el){
   if(action==="delmedia"){keepDraftFields();draft.media.splice(parseInt(id,10),1);render();return;}
   if(action==="receipt"){openReceipt(id);return;}
   if(action==="open"){modalItemId=id;modalMiniMode=null;renderModal();return;}
+  if(action==="togglecompare"){
+    var ci=compareIds.indexOf(id);
+    if(ci>-1)compareIds.splice(ci,1);
+    else{
+      if(compareIds.length>=3){toast("You can compare up to 3 tags at a time.",true);return;}
+      compareIds.push(id);
+    }
+    if(modalMiniMode==="compare"){if(compareIds.length)renderModal();else closeModalAll();}
+    render();
+    return;
+  }
+  if(action==="opencompare"){if(!compareIds.length){toast("Tap the compare icon on a tag first.",true);return;}modalMiniMode="compare";modalItemId=null;renderModal();return;}
+  if(action==="clearcompare"){compareIds=[];render();if(modalMiniMode==="compare")closeModalAll();return;}
   if(action==="close-modal"){closeModalAll();return;}
   if(action==="new-handle"){
     api("/profile/newhandle","POST").then(function(j){me=j.me;toast("You're now "+me.handle+" — picked for you automatically.");refresh();}).catch(function(e){toast(e.message,true);});return;}

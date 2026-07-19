@@ -416,7 +416,7 @@ module.exports = async function handler(req, res) {
       const platforms = (Array.isArray(body.platforms) ? body.platforms : []).filter((p) => ["Marketplace", "Gumtree", "Freecycle", "Olio"].includes(p));
       const category = String(body.category || "other").slice(0, 20);
       const conciergeAddress = String(body.conciergeAddress || "").trim().slice(0, 200);
-      const concierge = !!body.concierge && NON_KERB_CATS.indexOf(category) === -1 && conciergeAddress
+      const concierge = !!body.concierge && NON_KERB_CATS.indexOf(category) === -1 && /\d/.test(conciergeAddress)
         ? { requested: true, address: conciergeAddress, requestedAt: now() }
         : null;
       const item = {
