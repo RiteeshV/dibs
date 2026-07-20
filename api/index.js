@@ -283,6 +283,20 @@ module.exports = async function handler(req, res) {
     if (path === "/config" && method === "GET")
       return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY });
 
+    // eBay Marketplace Account Deletion notifications (required to enable the keyset).
+    // GET = eBay's endpoint-validation challenge; POST = deletion notices (we store no eBay
+    // user data, so acknowledging with 200 is the entire obligation).
+    if (path === "/ebay-notifications") {
+      const vt = process.env.EBAY_VERIFICATION_TOKEN || "";
+      if (method === "GET") {
+        const cc = url.searchParams.get("challenge_code") || "";
+        const endpoint = (process.env.PUBLIC_BASE_URL || "https://kerbside-kappa.vercel.app") + "/api/ebay-notifications";
+        const hash = crypto.createHash("sha256").update(cc + vt + endpoint).digest("hex");
+        return send(res, 200, { challengeResponse: hash });
+      }
+      if (method === "POST") return send(res, 200, { ok: true });
+    }
+
     if (path === "/oauth/google" && method === "POST") {
       if (!GOOGLE_CLIENT_ID) return send(res, 400, { error: "Google sign-in isn't connected yet." });
       let payload;
