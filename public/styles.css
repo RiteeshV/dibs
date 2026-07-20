@@ -461,3 +461,16 @@ html[data-theme="dark"] .ticker span::after{background:#fff}
 .iconbtn svg{width:18px;height:18px}
 .sect-ic{display:inline-flex;vertical-align:-3px;margin-right:7px;color:var(--teal)}
 .sect-ic svg{width:17px;height:17px}
+
+/* ---------- "From the web" external panel ---------- */
+.ebayph svg{width:24px;height:24px;color:var(--faint)}
+.esrc{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--faint);padding:0 9px 8px;text-transform:uppercase;letter-spacing:.6px}
+.extgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.extsite{display:flex;flex-direction:column;gap:5px;text-decoration:none;color:inherit;border:1.5px solid var(--line2);border-radius:12px;padding:14px;background:var(--card);transition:transform .16s,box-shadow .16s,border-color .16s}
+.extsite:hover{transform:translate(-1px,-2px);box-shadow:3px 4px 0 var(--line2);border-color:var(--ink)}
+.extsite .xn{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:.4px;text-transform:uppercase}
+.extsite .xh{font-size:10.5px;color:var(--soft);font-weight:700}
+.ebaycard.shimmer{pointer-events:none}
+.ebaycard.shimmer .ebayph,.ebaycard.shimmer .et{position:relative;overflow:hidden;background:var(--card2)}
+.ebaycard.shimmer .ebayph::after,.ebaycard.shimmer .et::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--glass-hi),transparent);animation:shimmerSweep 1.2s infinite}
+@keyframes shimmerSweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}

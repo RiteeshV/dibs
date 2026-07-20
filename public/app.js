@@ -71,7 +71,8 @@ var ICONS={
   globe:ic('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
   cart:ic('<circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2.5 3h2l2.6 12.4a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.6L21.5 7H6"/>'),
   trophy:ic('<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 5M17 6h3a3 3 0 0 1-3 5"/>'),
-  leaf:ic('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>')
+  leaf:ic('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>'),
+  external:ic('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>')
 };
 function catIcon(key){return ICONS[key]||ICONS.other;}
 var CAT_SYNONYMS={
@@ -200,6 +201,53 @@ var filterMin="",filterMax="",filterKeyword="";
 var CAT_FILTER_LABEL={vehicles:"Make or model",property_rent:"Bedrooms or feature",property_sale:"Bedrooms or feature",jobs:"Role or industry",services:"Type of service",classifieds:"Keyword"};
 var CAT_FILTER_PLACEHOLDER={vehicles:"e.g. Corolla",property_rent:"e.g. 2 bedroom",property_sale:"e.g. 3 bedroom",jobs:"e.g. barista",services:"e.g. cleaning"};
 var googleClientId=null, ebayEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
+/* "From the web" — inline external results per category. Goods categories pull real
+   eBay AU listings (images/prices) through our API proxy; categories whose big AU
+   players offer no public API (Carsales, realestate.com.au, Seek…) get branded
+   source tiles instead — never a fake scrape. */
+var EXT_SEEDS={furniture:"furniture",electronics:"electronics",clothing:"clothes",family:"baby kids",entertainment:"movies games",books:"books",kitchen:"kitchen appliances",toys:"toys games",garden:"garden outdoor",sports:"sporting goods",pets:"pet supplies",homegoods:"home decor",homeimprove:"power tools",music:"musical instruments",office:"office supplies",hobbies:"craft hobby",other:"secondhand"};
+var EXT_LINK_SITES={
+  vehicles:[["Carsales","https://www.carsales.com.au"],["Gumtree Cars","https://www.gumtree.com.au/s-cars-vans-utes/c18320"],["Marketplace","https://www.facebook.com/marketplace/category/vehicles"]],
+  property_rent:[["realestate.com.au","https://www.realestate.com.au/rent"],["Domain","https://www.domain.com.au/rent"]],
+  property_sale:[["realestate.com.au","https://www.realestate.com.au/buy"],["Domain","https://www.domain.com.au/sale"]],
+  jobs:[["Seek","https://www.seek.com.au"],["Indeed AU","https://au.indeed.com/jobs?q="]],
+  services:[["Airtasker","https://www.airtasker.com"],["hipages","https://hipages.com.au"]],
+  classifieds:[["Gumtree","https://www.gumtree.com.au"],["Marketplace","https://www.facebook.com/marketplace"]]
+};
+var extLoading=false,extResults=null,extKey=null,extCache={},extTimer=null;
+function extQueryFor(cat,q){
+  q=(q||"").trim();
+  if(q)return q;
+  return EXT_SEEDS[cat]||"";
+}
+function loadExternal(cat,q,force){
+  if(cat==="all"||cat==="free")cat=null;
+  if(cat&&EXT_LINK_SITES[cat]){extResults={mode:"links",cat:cat};extLoading=false;extKey=null;return;}
+  var query=extQueryFor(cat,q);
+  if(!query||!ebayEnabled){extResults=null;extLoading=false;extKey=null;return;}
+  var key=query.toLowerCase();
+  if(!force&&extKey===key)return;
+  extKey=key;
+  if(extCache[key]){extResults={mode:"results",q:query,items:extCache[key]};extLoading=false;return;}
+  extLoading=true;extResults=null;
+  api("/search/ebay?q="+encodeURIComponent(query)).then(function(j){
+    if(extKey!==key)return;
+    extCache[key]=j.results||[];
+    extLoading=false;extResults={mode:"results",q:query,items:extCache[key]};
+    repaintExternal();
+  }).catch(function(e){
+    if(extKey!==key)return;
+    extLoading=false;extResults={mode:"error",error:e.message};
+    repaintExternal();
+  });
+}
+function repaintExternal(){
+  var box=document.getElementById("extPanel");
+  if(box)box.outerHTML=externalPanelHtml();
+  initScrollAnim();
+  var nb=document.getElementById("extPanel");
+  if(nb)nb.querySelectorAll(".reveal").forEach(function(el){el.classList.add("in");});
+}
 var draft={category:"other",platforms:["Marketplace","Freecycle"],media:[],priced:false,concierge:false};
 var modalItemId=null, modalMiniMode=null, modalMiniId=null;
 var compareIds=[];
@@ -661,21 +709,40 @@ function viewFeed(){
         ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU</button>'
         :'<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
     }).join("")+'</div></div>';
-  return demo+heroHtml()+'<h2 class="st reveal">Fresh near you</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+psearch+ebayPanelHtml();
+  return demo+heroHtml()+'<h2 class="st reveal">Fresh near you</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+externalPanelHtml()+psearch;
 }
-function ebayPanelHtml(){
-  if(ebayLoading)return '<div class="psearch reveal"><p class="hint" style="margin:0">Searching eBay AU…</p></div>';
-  if(!ebayResults)return "";
-  if(ebayResults.error)return '<div class="psearch reveal"><p class="hint" style="margin:0;color:var(--red)">'+esc(ebayResults.error)+'</p></div>';
-  if(!ebayResults.items.length)return '<div class="psearch reveal"><p class="hint" style="margin:0">No eBay AU results for “'+esc(ebayResults.q)+'”.</p></div>';
-  return '<div class="psearch reveal"><div style="font-weight:700;margin-bottom:10px">Also on eBay AU for “'+esc(ebayResults.q)+'”</div>'+
-    '<div class="ebayrow">'+ebayResults.items.map(function(it){
-      return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
-        (it.image?'<img src="'+esc(it.image)+'" alt="">':'<div class="ebayph">'+ICONS.cart+'</div>')+
-        '<div class="et">'+esc(it.title)+'</div>'+
-        (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
-      '</a>';
-    }).join("")+'</div></div>';
+function externalPanelHtml(){
+  var inner="";
+  if(extLoading){
+    inner='<div class="ebayrow">'+[1,2,3,4].map(function(){return '<div class="ebaycard shimmer"><div class="ebayph"></div><div class="et">&nbsp;</div></div>';}).join("")+'</div>';
+  }else if(extResults&&extResults.mode==="links"){
+    var cdef=CATS.filter(function(c){return c[0]===extResults.cat;})[0];
+    inner='<p class="hint" style="margin:0 0 10px">'+esc(cdef?cdef[1]:"This category")+' listings live on these sites — they don\'t offer public feeds, so browsing opens in a new tab:</p>'+
+      '<div class="extgrid">'+EXT_LINK_SITES[extResults.cat].map(function(s){
+        var url=s[1]+(s[1].indexOf("?q=")>-1?encodeURIComponent(searchQ||filterKeyword||""):"");
+        return '<a class="extsite" href="'+esc(url)+'" target="_blank" rel="noopener"><span class="xn">'+esc(s[0])+'</span><span class="xh">Browse '+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></span></a>';
+      }).join("")+'</div>';
+  }else if(extResults&&extResults.mode==="error"){
+    inner='<p class="hint" style="margin:0;color:var(--red)">'+esc(extResults.error)+'</p>';
+  }else if(extResults&&extResults.mode==="results"){
+    if(!extResults.items.length){
+      inner='<p class="hint" style="margin:0">No eBay AU results for “'+esc(extResults.q)+'”.</p>';
+    }else{
+      inner='<div class="ebayrow">'+extResults.items.map(function(it){
+        return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
+          (it.image?'<img src="'+esc(it.image)+'" alt="" loading="lazy">':'<div class="ebayph">'+ICONS.cart+'</div>')+
+          '<div class="et">'+esc(it.title)+'</div>'+
+          (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
+          '<span class="esrc">eBay AU</span>'+
+        '</a>';
+      }).join("")+'</div>'+
+      '<a class="pill gh sm" style="display:inline-block;margin-top:10px;text-decoration:none" href="https://www.ebay.com.au/sch/i.html?_nkw='+encodeURIComponent(extResults.q)+'" target="_blank" rel="noopener">More on eBay AU <span class="ic-inline">'+ICONS.external+'</span></a>';
+    }
+  }else{
+    return '<div id="extPanel"></div>';
+  }
+  return '<div id="extPanel"><h2 class="st reveal">From the web</h2><div class="psearch reveal">'+inner+
+  '<p class="hint" style="margin:10px 0 0">Buying happens on the source site — Dibs shows you what\'s out there in one place.</p></div></div>';
 }
 function viewPost(){
   return '<h2 class="st reveal">Post something</h2><form id="postForm" novalidate class="reveal">'+
@@ -875,7 +942,11 @@ function bind(){
   };
   var fs=document.getElementById("f-search");
   if(fs){
-    fs.oninput=function(){searchQ=fs.value;var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();updateDropdown("searchDrop",searchQ);};
+    fs.oninput=function(){
+      searchQ=fs.value;var fl=document.getElementById("feedList");if(fl)fl.innerHTML=feedListHtml();initScrollAnim();updateDropdown("searchDrop",searchQ);
+      clearTimeout(extTimer);
+      extTimer=setTimeout(function(){loadExternal(catFilter,searchQ);repaintExternal();},600);
+    };
     fs.onfocus=function(){if(fs.value)updateDropdown("searchDrop",fs.value);};
     fs.onblur=function(){setTimeout(function(){updateDropdown("searchDrop","");},150);};
   }
@@ -884,7 +955,11 @@ function bind(){
   if(fmin)fmin.oninput=function(){filterMin=fmin.value;refreshFeedList();};
   if(fmax)fmax.oninput=function(){filterMax=fmax.value;refreshFeedList();};
   if(fkw){
-    fkw.oninput=function(){filterKeyword=fkw.value;refreshFeedList();updateDropdown("kwDrop",filterKeyword);};
+    fkw.oninput=function(){
+      filterKeyword=fkw.value;refreshFeedList();updateDropdown("kwDrop",filterKeyword);
+      clearTimeout(extTimer);
+      extTimer=setTimeout(function(){loadExternal(catFilter,filterKeyword);repaintExternal();},600);
+    };
     fkw.onfocus=function(){if(fkw.value)updateDropdown("kwDrop",fkw.value);};
     fkw.onblur=function(){setTimeout(function(){updateDropdown("kwDrop","");},150);};
   }
@@ -1009,11 +1084,12 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
-  if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";render();return;}
+  if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";loadExternal(id,searchQ);render();return;}
   if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
   if(action==="clearfilters"){filterMin="";filterMax="";filterKeyword="";render();return;}
   if(action==="herogo"){
     catFilter=id;tab="feed";filterMin="";filterMax="";filterKeyword="";
+    loadExternal(id,searchQ);
     var cdef=CATS.filter(function(c){return c[0]===id;})[0];
     if(cdef&&!cdef[4])showAllCats=true;
     render();
@@ -1029,9 +1105,9 @@ function act(action,id,el){
     var eq=currentSearchText().trim();
     if(!eq){toast("Type something to search first.",true);return;}
     if(!ebayEnabled){toast("eBay search isn't connected yet — it needs a free eBay Developer Client ID + Secret.",true);return;}
-    ebayLoading=true;ebayResults=null;render();
-    api("/search/ebay?q="+encodeURIComponent(eq)).then(function(j){ebayLoading=false;ebayResults={q:eq,items:j.results||[]};render();})
-    .catch(function(e){ebayLoading=false;ebayResults={q:eq,error:e.message};render();});
+    loadExternal(catFilter,eq,true);
+    render();
+    var xp=document.getElementById("extPanel");if(xp)xp.scrollIntoView({behavior:"smooth",block:"center"});
     return;}
   if(action==="cat"){keepDraftFields();draft.category=id;render();return;}
   if(action==="priced"){keepDraftFields();draft.priced=id==="1";render();return;}
