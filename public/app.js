@@ -200,7 +200,7 @@ var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="l
 var filterMin="",filterMax="",filterKeyword="";
 var CAT_FILTER_LABEL={vehicles:"Make or model",property_rent:"Bedrooms or feature",property_sale:"Bedrooms or feature",jobs:"Role or industry",services:"Type of service",classifieds:"Keyword"};
 var CAT_FILTER_PLACEHOLDER={vehicles:"e.g. Corolla",property_rent:"e.g. 2 bedroom",property_sale:"e.g. 3 bedroom",jobs:"e.g. barista",services:"e.g. cleaning"};
-var googleClientId=null, ebayEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
+var googleClientId=null, ebayEnabled=false, domainEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
 /* "From the web" — inline external results per category. Goods categories pull real
    eBay AU listings (images/prices) through our API proxy; categories whose big AU
    players offer no public API (Carsales, realestate.com.au, Seek…) get branded
@@ -220,8 +220,29 @@ function extQueryFor(cat,q){
   if(q)return q;
   return EXT_SEEDS[cat]||"";
 }
+var DOMAIN_CATS={property_rent:"Rent",property_sale:"Sale"};
 function loadExternal(cat,q,force){
   if(cat==="all"||cat==="free")cat=null;
+  /* Property: real Domain.com.au listings when the API keys are configured */
+  if(cat&&DOMAIN_CATS[cat]&&domainEnabled){
+    var dKey="domain:"+cat+":"+feedScope+":"+(filterMax||"");
+    if(!force&&extKey===dKey)return;
+    extKey=dKey;
+    if(extCache[dKey]){extResults={mode:"property",cat:cat,items:extCache[dKey]};extLoading=false;return;}
+    extLoading=true;extResults=null;
+    var dq="/search/domain?type="+DOMAIN_CATS[cat]+"&scope="+(feedScope==="all"?"all":"suburb")+(filterMax?"&maxPrice="+encodeURIComponent(filterMax):"");
+    api(dq).then(function(j){
+      if(extKey!==dKey)return;
+      extCache[dKey]=j.results||[];
+      extLoading=false;extResults={mode:"property",cat:cat,items:extCache[dKey]};
+      repaintExternal();
+    }).catch(function(e){
+      if(extKey!==dKey)return;
+      extLoading=false;extResults={mode:"error",error:e.message};
+      repaintExternal();
+    });
+    return;
+  }
   if(cat&&EXT_LINK_SITES[cat]){extResults={mode:"links",cat:cat};extLoading=false;extKey=null;return;}
   var query=extQueryFor(cat,q);
   if(!query||!ebayEnabled){extResults=null;extLoading=false;extKey=null;return;}
@@ -274,7 +295,7 @@ function boot(){
   bindModalOnce();
   startSuburbPlaceholderRotation();
   window.addEventListener("resize",function(){if(me)positionDockLiquid();});
-  api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;if(!me)render();}).catch(function(){});
+  api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;domainEnabled=!!j.domainEnabled;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
 }
 function refresh(){
@@ -722,6 +743,29 @@ function externalPanelHtml(){
         var url=s[1]+(s[1].indexOf("?q=")>-1?encodeURIComponent(searchQ||filterKeyword||""):"");
         return '<a class="extsite" href="'+esc(url)+'" target="_blank" rel="noopener"><span class="xn">'+esc(s[0])+'</span><span class="xh">Browse '+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></span></a>';
       }).join("")+'</div>';
+  }else if(extResults&&extResults.mode==="property"){
+    var pcd=CATS.filter(function(c){return c[0]===extResults.cat;})[0];
+    var where=feedScope==="all"?("across "+esc(me.state||"Australia")):("near "+esc(me.suburb));
+    if(!extResults.items.length){
+      inner='<p class="hint" style="margin:0">No '+esc(pcd?pcd[1].toLowerCase():"property")+' listings '+where+' right now.</p>'+
+        '<div class="ddelsewhere" style="padding:10px 0 0"><a class="pill gh sm" style="text-decoration:none" href="https://www.domain.com.au/'+(extResults.cat==="property_rent"?"rent":"sale")+'" target="_blank" rel="noopener">Browse Domain <span class="ic-inline">'+ICONS.external+'</span></a></div>';
+    }else{
+      inner='<p class="hint" style="margin:0 0 10px">Live listings '+where+', straight from Domain.</p>'+
+      '<div class="ebayrow">'+extResults.items.map(function(it){
+        var specs=[];
+        if(it.beds!=null)specs.push(it.beds+" bed");
+        if(it.baths!=null)specs.push(it.baths+" bath");
+        if(it.carspaces)specs.push(it.carspaces+" car");
+        return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
+          (it.image?'<img src="'+esc(it.image)+'" alt="" loading="lazy">':'<div class="ebayph">'+catIcon(extResults.cat)+'</div>')+
+          (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
+          '<div class="et">'+esc(it.title)+'</div>'+
+          (specs.length?'<div class="espec">'+esc(specs.join(" · "))+'</div>':'')+
+          '<span class="esrc">Domain</span>'+
+        '</a>';
+      }).join("")+'</div>'+
+      '<a class="pill gh sm" style="display:inline-block;margin-top:10px;text-decoration:none" href="https://www.domain.com.au/'+(extResults.cat==="property_rent"?"rent":"sale")+'" target="_blank" rel="noopener">More on Domain <span class="ic-inline">'+ICONS.external+'</span></a>';
+    }
   }else if(extResults&&extResults.mode==="error"){
     inner='<p class="hint" style="margin:0;color:var(--red)">'+esc(extResults.error)+'</p>';
   }else if(extResults&&extResults.mode==="results"){

@@ -474,3 +474,4 @@ html[data-theme="dark"] .ticker span::after{background:#fff}
 .ebaycard.shimmer .ebayph,.ebaycard.shimmer .et{position:relative;overflow:hidden;background:var(--card2)}
 .ebaycard.shimmer .ebayph::after,.ebaycard.shimmer .et::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--glass-hi),transparent);animation:shimmerSweep 1.2s infinite}
 @keyframes shimmerSweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.espec{font-size:10.5px;color:var(--soft);font-weight:700;padding:0 9px 2px}

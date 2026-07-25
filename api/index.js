@@ -12,6 +12,9 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID || "";
 const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET || "";
 const HAS_EBAY = !!(EBAY_CLIENT_ID && EBAY_CLIENT_SECRET);
+const DOMAIN_CLIENT_ID = process.env.DOMAIN_CLIENT_ID || "";
+const DOMAIN_CLIENT_SECRET = process.env.DOMAIN_CLIENT_SECRET || "";
+const HAS_DOMAIN = !!(DOMAIN_CLIENT_ID && DOMAIN_CLIENT_SECRET);
 
 const CLAIM_HOLD_DAYS = 2;
 const FLAGS_TO_OBSERVE = 2;
@@ -200,6 +203,58 @@ async function searchEbay(query) {
   }));
 }
 
+/* ---------------- Domain.com.au Listings API (real in-app property results) ----------------
+   Licensed access via Domain's developer program — not scraping. OAuth2 client_credentials,
+   scope api_listings_read. Results are shown inline; the listing itself lives on Domain. */
+let domainTokenCache = null, domainTokenExpAt = 0;
+async function getDomainToken() {
+  if (domainTokenCache && now() < domainTokenExpAt - 60000) return domainTokenCache;
+  const basic = Buffer.from(DOMAIN_CLIENT_ID + ":" + DOMAIN_CLIENT_SECRET).toString("base64");
+  const res = await fetch("https://auth.domain.com.au/v1/connect/token", {
+    method: "POST",
+    headers: { Authorization: "Basic " + basic, "Content-Type": "application/x-www-form-urlencoded" },
+    body: "grant_type=client_credentials&scope=" + encodeURIComponent("api_listings_read"),
+  });
+  if (!res.ok) throw new Error("Domain auth failed: " + res.status);
+  const j = await res.json();
+  domainTokenCache = j.access_token;
+  domainTokenExpAt = now() + (j.expires_in || 3600) * 1000;
+  return domainTokenCache;
+}
+async function searchDomain({ listingType, suburb, state, maxPrice }) {
+  const token = await getDomainToken();
+  const loc = { state: state || "", includeSurroundingSuburbs: true };
+  if (suburb) loc.suburb = suburb;
+  const body = {
+    listingType: listingType === "Rent" ? "Rent" : "Sale",
+    locations: [loc],
+    pageSize: 6,
+  };
+  if (maxPrice) body.maxPrice = maxPrice;
+  const res = await fetch("https://api.domain.com.au/v1/listings/residential/_search", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Domain search failed: " + res.status);
+  const rows = await res.json();
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.listing)
+    .slice(0, 6)
+    .map((r) => {
+      const l = r.listing, pd = l.propertyDetails || {}, media = l.media || [];
+      return {
+        title: pd.displayableAddress || "Property listing",
+        price: (l.priceDetails && l.priceDetails.displayPrice) || null,
+        image: media.length && media[0].url ? media[0].url : null,
+        url: l.listingSlug ? "https://www.domain.com.au/" + l.listingSlug : "https://www.domain.com.au",
+        beds: typeof pd.bedrooms === "number" ? pd.bedrooms : null,
+        baths: typeof pd.bathrooms === "number" ? pd.bathrooms : null,
+        carspaces: typeof pd.carspaces === "number" ? pd.carspaces : null,
+      };
+    });
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
@@ -281,7 +336,7 @@ module.exports = async function handler(req, res) {
     if (path === "/health") return send(res, 200, { ok: true, dbMode: HAS_DB ? "supabase" : "demo" });
 
     if (path === "/config" && method === "GET")
-      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY });
+      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY, domainEnabled: HAS_DOMAIN });
 
     // eBay Marketplace Account Deletion notifications (required to enable the keyset).
     // GET = eBay's endpoint-validation challenge; POST = deletion notices (we store no eBay
@@ -380,6 +435,22 @@ module.exports = async function handler(req, res) {
         return send(res, 200, { results });
       } catch {
         return send(res, 502, { error: "Couldn't reach eBay — try again." });
+      }
+    }
+
+    if (path === "/search/domain" && method === "GET") {
+      if (!HAS_DOMAIN) return send(res, 400, { error: "Domain property search isn't connected yet." });
+      const listingType = url.searchParams.get("type") === "Rent" ? "Rent" : "Sale";
+      // "all Australia" scope drops the suburb and searches the whole state
+      const scopeAll = url.searchParams.get("scope") === "all";
+      const suburb = scopeAll ? "" : String(url.searchParams.get("suburb") || me.suburb || "").slice(0, 40);
+      const state = String(url.searchParams.get("state") || me.state || "NSW").slice(0, 3);
+      const maxPrice = Number(url.searchParams.get("maxPrice")) || 0;
+      try {
+        const results = await searchDomain({ listingType, suburb, state, maxPrice });
+        return send(res, 200, { results });
+      } catch {
+        return send(res, 502, { error: "Couldn't reach Domain — try again." });
       }
     }
 
