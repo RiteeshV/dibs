@@ -48,8 +48,8 @@ function tierFor(points) {
 /* ---------------- Generic store ---------------- */
 // Demo store (per-instance memory)
 const g = globalThis;
-if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {} };
-if (!g.__ksMem.receipts) g.__ksMem.receipts = {};
+if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {}, meta: {} };
+for (const c of ["users", "items", "notifs", "receipts", "meta"]) if (!g.__ksMem[c]) g.__ksMem[c] = {};
 
 /* Set when the configured database becomes unreachable (project deleted, paused,
    DNS failure, outage). Rather than failing every request with an opaque 500, we
@@ -368,6 +368,25 @@ module.exports = async function handler(req, res) {
 
     // ---- auth-free routes ----
     if (path === "/health") return send(res, 200, { ok: true, dbMode: dbLive() ? "supabase" : "demo" });
+
+    /* Keep-warm. Free-tier databases pause or get deleted after a period with no
+       traffic (Supabase pauses at ~1 week). A daily Vercel cron hits this and
+       performs a real round-trip write+read so the provider sees genuine activity
+       — a plain HTTP ping to the app would not touch the database at all. */
+    if (path === "/cron/keepwarm") {
+      const cronSecret = process.env.CRON_SECRET || "";
+      if (cronSecret && req.headers.authorization !== "Bearer " + cronSecret)
+        return send(res, 401, { error: "Unauthorized." });
+      const probeId = "keepwarm";
+      try {
+        await db.put("meta", probeId, { id: probeId, lastPing: now() });
+        const back = await db.get("meta", probeId);
+        return send(res, 200, { ok: true, dbMode: dbLive() ? "supabase" : "demo", roundTrip: !!back, at: back && back.lastPing });
+      } catch (err) {
+        console.error("Keep-warm failed:", err.message);
+        return send(res, 500, { ok: false, dbMode: dbLive() ? "supabase" : "demo", error: "Keep-warm round-trip failed." });
+      }
+    }
 
     if (path === "/config" && method === "GET")
       return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY, domainEnabled: HAS_DOMAIN });
