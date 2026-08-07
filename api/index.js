@@ -4,7 +4,12 @@
 "use strict";
 const crypto = require("crypto");
 
-const SECRET = process.env.SESSION_SECRET || "kerbside-pilot-secret-change-me";
+/* Session signing key. Falls back to a per-process random value rather than a
+   hardcoded constant — a published constant would let anyone forge session
+   cookies on a deployment that forgot to set SESSION_SECRET. The tradeoff is
+   that sessions don't survive a restart locally, which is fine for dev. */
+const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.SESSION_SECRET) console.warn("SESSION_SECRET not set — using a random per-process key; sessions will not survive a restart.");
 const SUPA_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 const HAS_DB = !!(SUPA_URL && SUPA_KEY);
