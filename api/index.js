@@ -51,17 +51,38 @@ const g = globalThis;
 if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {} };
 if (!g.__ksMem.receipts) g.__ksMem.receipts = {};
 
+/* Set when the configured database becomes unreachable (project deleted, paused,
+   DNS failure, outage). Rather than failing every request with an opaque 500, we
+   fall back to the in-memory store and report dbMode "demo" so the client shows
+   its existing "data may reset" banner — degraded but honest and usable. */
+let dbUnreachable = false;
+function isNetworkFailure(err) {
+  const code = err && err.cause && err.cause.code;
+  return err instanceof TypeError || ["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"].includes(code);
+}
+function dbLive() { return HAS_DB && !dbUnreachable; }
+
 async function supa(method, path, body) {
-  const res = await fetch(SUPA_URL + "/rest/v1/" + path, {
-    method,
-    headers: {
-      apikey: SUPA_KEY,
-      Authorization: "Bearer " + SUPA_KEY,
-      "Content-Type": "application/json",
-      Prefer: method === "POST" ? "resolution=merge-duplicates,return=minimal" : "return=minimal",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(SUPA_URL + "/rest/v1/" + path, {
+      method,
+      headers: {
+        apikey: SUPA_KEY,
+        Authorization: "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json",
+        Prefer: method === "POST" ? "resolution=merge-duplicates,return=minimal" : "return=minimal",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    if (isNetworkFailure(err)) {
+      if (!dbUnreachable) console.error("Database unreachable — falling back to in-memory store.", err.message);
+      dbUnreachable = true;
+      const e = new Error("DB_UNREACHABLE"); e.dbUnreachable = true; throw e;
+    }
+    throw err;
+  }
   if (!res.ok) throw new Error("DB error " + res.status + ": " + (await res.text()).slice(0, 300));
   if (method === "GET") return res.json();
   return null;
@@ -69,22 +90,30 @@ async function supa(method, path, body) {
 
 const db = {
   async get(coll, id) {
-    if (!HAS_DB) return g.__ksMem[coll][id] || null;
-    const rows = await supa("GET", `ks_store?collection=eq.${coll}&id=eq.${encodeURIComponent(id)}&select=data`);
-    return rows.length ? rows[0].data : null;
+    if (!dbLive()) return g.__ksMem[coll][id] || null;
+    try {
+      const rows = await supa("GET", `ks_store?collection=eq.${coll}&id=eq.${encodeURIComponent(id)}&select=data`);
+      return rows.length ? rows[0].data : null;
+    } catch (e) { if (e.dbUnreachable) return g.__ksMem[coll][id] || null; throw e; }
   },
   async list(coll) {
-    if (!HAS_DB) return Object.values(g.__ksMem[coll]);
-    const rows = await supa("GET", `ks_store?collection=eq.${coll}&select=data&limit=1000`);
-    return rows.map((r) => r.data);
+    if (!dbLive()) return Object.values(g.__ksMem[coll]);
+    try {
+      const rows = await supa("GET", `ks_store?collection=eq.${coll}&select=data&limit=1000`);
+      return rows.map((r) => r.data);
+    } catch (e) { if (e.dbUnreachable) return Object.values(g.__ksMem[coll]); throw e; }
   },
   async put(coll, id, data) {
-    if (!HAS_DB) { g.__ksMem[coll][id] = data; return; }
-    await supa("POST", "ks_store?on_conflict=collection,id", [{ collection: coll, id, data }]);
+    if (!dbLive()) { g.__ksMem[coll][id] = data; return; }
+    try {
+      await supa("POST", "ks_store?on_conflict=collection,id", [{ collection: coll, id, data }]);
+    } catch (e) { if (e.dbUnreachable) { g.__ksMem[coll][id] = data; return; } throw e; }
   },
   async del(coll, id) {
-    if (!HAS_DB) { delete g.__ksMem[coll][id]; return; }
-    await supa("DELETE", `ks_store?collection=eq.${coll}&id=eq.${encodeURIComponent(id)}`);
+    if (!dbLive()) { delete g.__ksMem[coll][id]; return; }
+    try {
+      await supa("DELETE", `ks_store?collection=eq.${coll}&id=eq.${encodeURIComponent(id)}`);
+    } catch (e) { if (e.dbUnreachable) { delete g.__ksMem[coll][id]; return; } throw e; }
   },
 };
 
@@ -338,7 +367,7 @@ module.exports = async function handler(req, res) {
     const body = method === "POST" || method === "PUT" ? await readBody(req) : {};
 
     // ---- auth-free routes ----
-    if (path === "/health") return send(res, 200, { ok: true, dbMode: HAS_DB ? "supabase" : "demo" });
+    if (path === "/health") return send(res, 200, { ok: true, dbMode: dbLive() ? "supabase" : "demo" });
 
     if (path === "/config" && method === "GET")
       return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY, domainEnabled: HAS_DOMAIN });
@@ -429,7 +458,7 @@ module.exports = async function handler(req, res) {
     const me = sess ? await db.get("users", sess.uid) : null;
     if (!me) return send(res, 401, { error: "Not logged in." });
 
-    if (path === "/me" && method === "GET") return send(res, 200, { me: meView(me), dbMode: HAS_DB ? "supabase" : "demo" });
+    if (path === "/me" && method === "GET") return send(res, 200, { me: meView(me), dbMode: dbLive() ? "supabase" : "demo" });
 
     if (path === "/search/ebay" && method === "GET") {
       if (!HAS_EBAY) return send(res, 400, { error: "eBay search isn't connected yet." });
