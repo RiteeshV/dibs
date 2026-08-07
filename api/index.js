@@ -51,16 +51,20 @@ const g = globalThis;
 if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {}, meta: {} };
 for (const c of ["users", "items", "notifs", "receipts", "meta"]) if (!g.__ksMem[c]) g.__ksMem[c] = {};
 
-/* Set when the configured database becomes unreachable (project deleted, paused,
-   DNS failure, outage). Rather than failing every request with an opaque 500, we
-   fall back to the in-memory store and report dbMode "demo" so the client shows
-   its existing "data may reset" banner — degraded but honest and usable. */
-let dbUnreachable = false;
+/* When the configured database becomes unreachable (project deleted, paused, DNS
+   failure, outage) we fall back to the in-memory store and report dbMode "demo"
+   so the client shows its existing "data may reset" banner — degraded but honest
+   and still usable, rather than failing every request with an opaque 500.
+   Degradation is time-boxed rather than permanent: after DB_RETRY_MS we try the
+   real database again, so a transient outage self-heals without a redeploy. */
+const DB_RETRY_MS = 60 * 1000;
+let dbDownUntil = 0;
 function isNetworkFailure(err) {
   const code = err && err.cause && err.cause.code;
   return err instanceof TypeError || ["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"].includes(code);
 }
-function dbLive() { return HAS_DB && !dbUnreachable; }
+function markDbDown() { dbDownUntil = Date.now() + DB_RETRY_MS; }
+function dbLive() { return HAS_DB && Date.now() >= dbDownUntil; }
 
 async function supa(method, path, body) {
   let res;
@@ -77,8 +81,8 @@ async function supa(method, path, body) {
     });
   } catch (err) {
     if (isNetworkFailure(err)) {
-      if (!dbUnreachable) console.error("Database unreachable — falling back to in-memory store.", err.message);
-      dbUnreachable = true;
+      if (dbLive()) console.error("Database unreachable — falling back to in-memory store.", err.message);
+      markDbDown();
       const e = new Error("DB_UNREACHABLE"); e.dbUnreachable = true; throw e;
     }
     throw err;
@@ -378,6 +382,7 @@ module.exports = async function handler(req, res) {
       if (cronSecret && req.headers.authorization !== "Bearer " + cronSecret)
         return send(res, 401, { error: "Unauthorized." });
       const probeId = "keepwarm";
+      dbDownUntil = 0; // clear any cooldown so this always probes the real database
       try {
         await db.put("meta", probeId, { id: probeId, lastPing: now() });
         const back = await db.get("meta", probeId);
