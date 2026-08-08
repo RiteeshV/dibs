@@ -363,7 +363,32 @@ function jobSalary(min, max) {
   if (min || max) return fmt(min || max);
   return null;
 }
-async function searchJobs({ query, where }) {
+/* Keyless jobs fallback. Jobicy is remote-only, so it can't replace Adzuna's
+   local coverage — but it needs no signup, so Jobs shows real ads out of the
+   box instead of an empty panel. The UI labels these as remote roles. */
+function stripTags(s) {
+  return String(s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "’").replace(/&nbsp;/g, " ").trim();
+}
+async function searchJobsJobicy(query) {
+  const qs = new URLSearchParams({ geo: "australia", count: "20" });
+  if (query) qs.set("tag", query);
+  const res = await fetch("https://jobicy.com/api/v2/remote-jobs?" + qs.toString(), {
+    headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000),
+  });
+  if (!res.ok) throw new Error("Jobicy failed: " + res.status);
+  const j = await res.json();
+  return (j.jobs || []).slice(0, 6).map((r) => ({
+    title: stripTags(r.jobTitle) || "Job listing",
+    company: stripTags(r.companyName) || null,
+    location: stripTags(r.jobGeo) || "Remote",
+    salary: null,
+    contract: Array.isArray(r.jobType) ? stripTags(r.jobType[0]).toLowerCase() : null,
+    url: r.url || "https://jobicy.com",
+    source: "Jobicy",
+    remote: true,
+  }));
+}
+async function searchJobsAdzuna({ query, where }) {
   const qs = new URLSearchParams({
     app_id: ADZUNA_APP_ID,
     app_key: ADZUNA_APP_KEY,
@@ -372,17 +397,28 @@ async function searchJobs({ query, where }) {
   });
   if (query) qs.set("what", query);
   if (where) qs.set("where", where);
-  const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString());
+  const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString(), { signal: AbortSignal.timeout(12000) });
   if (!res.ok) throw new Error("Adzuna search failed: " + res.status);
   const j = await res.json();
   return (j.results || []).slice(0, 6).map((r) => ({
-    title: r.title ? String(r.title).replace(/<[^>]*>/g, "") : "Job listing",
+    title: stripTags(r.title) || "Job listing",
     company: (r.company && r.company.display_name) || null,
     location: (r.location && r.location.display_name) || null,
     salary: jobSalary(r.salary_min, r.salary_max),
     contract: r.contract_time ? String(r.contract_time).replace(/_/g, " ") : null,
     url: r.redirect_url || "https://www.adzuna.com.au",
+    source: "Adzuna",
+    remote: false,
   }));
+}
+async function searchJobs({ query, where }) {
+  if (HAS_JOBS) {
+    try {
+      const local = await searchJobsAdzuna({ query, where });
+      if (local.length) return local;
+    } catch { /* fall through to the keyless source */ }
+  }
+  return searchJobsJobicy(query);
 }
 
 /* Services — two sources, best-available. Google Places gives ratings and hours
@@ -766,7 +802,6 @@ module.exports = async function handler(req, res) {
     }
 
     if (path === "/search/jobs" && method === "GET") {
-      if (!HAS_JOBS) return send(res, 400, { error: "Job search isn't connected yet." });
       const q = String(url.searchParams.get("q") || "").trim().slice(0, 80);
       // "all Australia" scope drops the suburb so the whole country is searched
       const where = url.searchParams.get("scope") === "all" ? "" : [me.suburb, me.state].filter(Boolean).join(", ");

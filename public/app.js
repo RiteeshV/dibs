@@ -387,7 +387,7 @@ function loadExternal(cat,q,force){
     return;
   }
   /* Jobs: real ads from Adzuna's AU index when a free key is configured */
-  if(cat==="jobs"&&jobsEnabled){
+  if(cat==="jobs"){
     var jq=(q||"").trim();
     var jKey="jobs:"+feedScope+":"+jq.toLowerCase();
     if(!force&&extKey===jKey)return;
@@ -984,7 +984,10 @@ function externalPanelHtml(){
     if(!extResults.items.length){
       inner='<p class="hint" style="margin:0">No job ads '+jwhere+' right now — try All Australia or a different keyword.</p>';
     }else{
-      inner='<p class="hint" style="margin:0 0 10px">Live job ads '+jwhere+'.</p>'+
+      var jremote=extResults.items[0].remote;
+      inner='<p class="hint" style="margin:0 0 10px">'+(jremote
+        ?'Remote roles open to Australia, via '+esc(extResults.items[0].source)+'.'
+        :'Live job ads '+jwhere+'.')+'</p>'+
       '<div class="jobrow">'+extResults.items.map(function(it){
         var meta=[it.company,it.location].filter(Boolean).join(" · ");
         var tags=[it.salary,it.contract].filter(Boolean);
@@ -992,7 +995,7 @@ function externalPanelHtml(){
           '<div class="jt">'+esc(it.title)+'</div>'+
           (meta?'<div class="jm">'+esc(meta)+'</div>':'')+
           (tags.length?'<div class="jtags">'+tags.map(function(t){return '<span class="jtag">'+esc(t)+'</span>';}).join("")+'</div>':'')+
-          '<span class="esrc">Adzuna</span>'+
+          '<span class="esrc">'+esc(it.source||"Adzuna")+'</span>'+
         '</a>';
       }).join("")+'</div>'+
       '<div class="ddelsewhere" style="padding:10px 0 0">'+(EXT_LINK_SITES.jobs||[]).map(function(s){
