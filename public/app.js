@@ -326,6 +326,7 @@ function extQueryFor(cat,q){
 var DOMAIN_CATS={property_rent:"Rent",property_sale:"Sale"};
 function loadExternal(cat,q,force){
   if(cat==="all"||cat==="free")cat=null;
+  loadPriceIndex(cat);
   /* Property: real Domain.com.au listings when the API keys are configured */
   if(cat&&DOMAIN_CATS[cat]&&domainEnabled){
     var dKey="domain:"+cat+":"+feedScope+":"+(filterMax||"");
@@ -482,6 +483,33 @@ function startPolling(){
     }).catch(function(){});
   },25000);
 }
+/* ---------- goods: ABS price-index bar ---------- */
+/* Only categories with a real CPI expenditure class get a bar — the backend
+   returns null for the rest rather than stretching an unrelated series. */
+var CPI_CATS={vehicles:1,furniture:1,clothing:1,electronics:1,homegoods:1,kitchen:1,toys:1,books:1,sports:1,garden:1,homeimprove:1};
+var priceIdx=null, priceIdxKey=null;
+function loadPriceIndex(cat){
+  if(!cat||!CPI_CATS[cat]){priceIdx=null;priceIdxKey=null;return;}
+  var k="cpi:"+cat+":"+feedScope;
+  if(priceIdxKey===k)return;
+  priceIdxKey=k; priceIdx=null;
+  api("/search/price-index?cat="+encodeURIComponent(cat)+"&scope="+(feedScope==="all"?"all":"state")).then(function(j){
+    if(priceIdxKey!==k)return;
+    priceIdx=j.index||null;
+    if(priceIdx)repaintExternal();
+  }).catch(function(){});
+}
+function priceIndexHtml(cat){
+  if(!priceIdx||!cat||!CPI_CATS[cat])return "";
+  var c=priceIdx.change, up=c>0, flat=Math.abs(c)<0.05;
+  return '<div class="jvbar">'+
+    '<span class="jvn '+(flat?"":up?"up":"down")+'">'+(up?"+":"")+c.toFixed(1)+'%</span>'+
+    '<span class="jvl">'+esc(priceIdx.label)+' in '+esc(priceIdx.region)+' vs a year ago'+
+      (flat?'':up?' — secondhand sidesteps that':' — new prices are falling too')+
+      '. ABS CPI, '+esc(priceIdx.period)+'</span>'+
+  '</div>';
+}
+
 /* ---------- jobs: insight strip + career guides ---------- */
 var jobInsight=null, jobInsightKey=null;
 function initialsFor(s){
@@ -979,7 +1007,7 @@ function externalPanelHtml(){
     inner='<div class="ebayrow">'+[1,2,3,4].map(function(){return '<div class="ebaycard shimmer"><div class="ebayph"></div><div class="et">&nbsp;</div></div>';}).join("")+'</div>';
   }else if(extResults&&extResults.mode==="links"){
     var cdef=CATS.filter(function(c){return c[0]===extResults.cat;})[0];
-    inner='<p class="hint" style="margin:0 0 10px">'+esc(cdef?cdef[1]:"This category")+' listings live on these sites — they don\'t offer public feeds, so browsing opens in a new tab:</p>'+
+    inner=priceIndexHtml(extResults.cat)+'<p class="hint" style="margin:0 0 10px">'+esc(cdef?cdef[1]:"This category")+' listings live on these sites — they don\'t offer public feeds, so browsing opens in a new tab:</p>'+
       '<div class="extgrid">'+EXT_LINK_SITES[extResults.cat].map(function(s){
         var url=s[1]+(s[1].indexOf("?q=")>-1?encodeURIComponent(searchQ||filterKeyword||""):"");
         return '<a class="extsite" href="'+esc(url)+'" target="_blank" rel="noopener"><span class="xn">'+esc(s[0])+'</span><span class="xh">Browse '+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></span></a>';
@@ -1088,7 +1116,7 @@ function externalPanelHtml(){
     if(!extResults.items.length){
       inner='<p class="hint" style="margin:0">No eBay AU results for “'+esc(extResults.q)+'”.</p>';
     }else{
-      inner='<div class="ebayrow">'+extResults.items.map(function(it){
+      inner=priceIndexHtml(extResults.cat)+'<div class="ebayrow">'+extResults.items.map(function(it){
         return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
           (it.image?'<img src="'+esc(it.image)+'" alt="" loading="lazy">':'<div class="ebayph">'+ICONS.cart+'</div>')+
           '<div class="et">'+esc(it.title)+'</div>'+

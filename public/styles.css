@@ -286,6 +286,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 /* ABS job-vacancy figure above the listings */
 .jvbar{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;padding:11px 13px;margin:0 0 12px;border:1px solid var(--line);border-radius:13px;background:var(--card2)}
 .jvn{font-family:'Anton',sans-serif;font-size:23px;letter-spacing:.5px;color:var(--ink)}
+.jvn.up{color:var(--amber)}
+.jvn.down{color:var(--teal)}
 .jvl{font-size:11.5px;color:var(--soft);line-height:1.4}
 .jvl b{font-weight:800}
 .jvl b.up{color:var(--teal)}

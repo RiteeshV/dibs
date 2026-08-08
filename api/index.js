@@ -674,6 +674,79 @@ async function jobVacancies(stateCode) {
   };
 }
 
+/* Category price index — ABS CPI annual change for the closest expenditure
+   class, in the user's capital city. Only categories with a genuine CPI class
+   are listed; the rest get no bar rather than a stretched analogy. Published
+   monthly (FREQ M), Original series. */
+const CPI_REGION = { NSW: "1", VIC: "2", QLD: "3", SA: "4", WA: "5", TAS: "6", NT: "7", ACT: "8" };
+const CPI_REGION_LABEL = { 1: "Sydney", 2: "Melbourne", 3: "Brisbane", 4: "Adelaide", 5: "Perth", 6: "Hobart", 7: "Darwin", 8: "Canberra", 50: "Australia" };
+const CPI_CLASS = {
+  vehicles:    ["40080",  "new motor vehicle prices"],
+  furniture:   ["40058",  "new furniture prices"],
+  clothing:    ["20002",  "new clothing & footwear prices"],
+  electronics: ["40098",  "new audio, visual & computing prices"],
+  homegoods:   ["97561",  "new household appliance & tool prices"],
+  kitchen:     ["115485", "new glassware & tableware prices"],
+  toys:        ["97572",  "new games, toys & hobby prices"],
+  books:       ["97567",  "new book prices"],
+  sports:      ["97571",  "new sports & camping gear prices"],
+  garden:      ["40066",  "new house & garden tool prices"],
+  homeimprove: ["40066",  "new house & garden tool prices"],
+};
+async function priceIndex(cat, regionCode) {
+  const entry = CPI_CLASS[cat];
+  if (!entry) return null;
+  const url = "https://data.api.abs.gov.au/rest/data/ABS,CPI/3." + entry[0] + ".10." + regionCode +
+    ".M?lastNObservations=1&dimensionAtObservation=AllDimensions";
+  const res = await fetch(url, { headers: { Accept: "application/vnd.sdmx.data+json", "User-Agent": UA }, signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error("ABS CPI failed: " + res.status);
+  const j = await res.json();
+  const st = j.data && j.data.structures && j.data.structures[0];
+  if (!st) return null;
+  const dims = st.dimensions.observation;
+  const order = dims.map((d) => d.id);
+  const vals = {};
+  dims.forEach((d) => { vals[d.id] = d.values; });
+  const entries = Object.entries(j.data.dataSets[0].observations || {});
+  if (!entries.length) return null;
+  const [k, v] = entries[0];
+  const p = k.split(":").map(Number);
+  const at = {};
+  order.forEach((id, i) => { at[id] = vals[id][p[i]]; });
+  return { change: v[0], label: entry[1], period: at.TIME_PERIOD.id, region: CPI_REGION_LABEL[regionCode] || "Australia" };
+}
+
+/* Health probe for the third-party sources. Reports whether each one answers,
+   never what the credentials are — a status code and a count, nothing more.
+   Requests one result per source so a health check costs almost no quota. */
+async function probeExternalSources() {
+  const out = {};
+  const note = async (name, fn) => {
+    try { out[name] = await fn(); } catch (e) { out[name] = "error: " + (e && e.message || "").slice(0, 120); }
+  };
+  if (HAS_JOBS) {
+    await note("adzuna", async () => {
+      const qs = new URLSearchParams({ app_id: ADZUNA_APP_ID.trim(), app_key: ADZUNA_APP_KEY.trim(), results_per_page: "1" });
+      const r = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString(), { signal: AbortSignal.timeout(10000) });
+      if (!r.ok) {
+        const raw = await r.text().catch(() => "");
+        return r.status + " " + (raw.trim().startsWith("<") ? stripTags(raw).replace(/\s+/g, " ") : raw).slice(0, 140);
+      }
+      const j = await r.json();
+      return "ok — " + (j.count != null ? j.count + " AU ads indexed" : "responded");
+    });
+  } else out.adzuna = "not configured";
+  out.jooble = JOOBLE_API_KEY ? "configured" : "not configured";
+  if (HAS_EBAY) {
+    await note("ebay", async () => {
+      const r = await searchEbay("test", null);
+      return "ok — " + r.length + " results";
+    });
+  } else out.ebay = "not configured";
+  await note("jobicy", async () => "ok — " + (await searchJobsJobicy("")).length + " results");
+  return out;
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
@@ -764,10 +837,14 @@ module.exports = async function handler(req, res) {
         return send(res, 401, { error: "Unauthorized." });
       const probeId = "keepwarm";
       dbDownUntil = 0; // clear any cooldown so this always probes the real database
+      // Opt-in only: the daily cron shouldn't spend third-party quota on health checks.
+      const probeSources = url.searchParams.get("probe") === "sources";
       try {
         await db.put("meta", probeId, { id: probeId, lastPing: now() });
         const back = await db.get("meta", probeId);
-        return send(res, 200, { ok: true, dbMode: dbLive() ? "supabase" : "demo", roundTrip: !!back, at: back && back.lastPing });
+        const out = { ok: true, dbMode: dbLive() ? "supabase" : "demo", roundTrip: !!back, at: back && back.lastPing };
+        if (probeSources) out.sources = await probeExternalSources();
+        return send(res, 200, out);
       } catch (err) {
         console.error("Keep-warm failed:", err.message);
         return send(res, 500, { ok: false, dbMode: dbLive() ? "supabase" : "demo", error: "Keep-warm round-trip failed." });
@@ -901,6 +978,16 @@ module.exports = async function handler(req, res) {
         return send(res, 200, { results: await searchJobs({ query: q, where }) });
       } catch {
         return send(res, 502, { error: "Couldn't reach the job feed — try again." });
+      }
+    }
+
+    if (path === "/search/price-index" && method === "GET") {
+      const cat = String(url.searchParams.get("cat") || "");
+      const code = url.searchParams.get("scope") === "all" ? "50" : (CPI_REGION[me.state] || "50");
+      try {
+        return send(res, 200, { index: await priceIndex(cat, code) });
+      } catch {
+        return send(res, 200, { index: null }); // decorative; never fail the panel for it
       }
     }
 
