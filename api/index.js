@@ -373,8 +373,16 @@ function stripTags(s) {
   return String(s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "’").replace(/&nbsp;/g, " ").trim();
 }
 async function searchJobsJobicy(query) {
+  // Jobicy's `tag` matches a fixed vocabulary, not free text — "kitchen" returns
+  // nothing while an untagged search returns 48. Treat the keyword as a hint:
+  // try it, and fall back to the unfiltered feed rather than an empty panel.
+  let rows = await jobicyFetch(query);
+  if (!rows.length && query) rows = await jobicyFetch(null);
+  return rows;
+}
+async function jobicyFetch(tag) {
   const qs = new URLSearchParams({ geo: "australia", count: String(EXT_LIMIT * 2) });
-  if (query) qs.set("tag", query);
+  if (tag) qs.set("tag", tag);
   const res = await fetch("https://jobicy.com/api/v2/remote-jobs?" + qs.toString(), {
     headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000),
   });
@@ -475,6 +483,16 @@ async function searchJobs({ query, where }) {
     }
   });
   if (merged.length) return merged.slice(0, EXT_LIMIT);
+  // A keyword plus a single suburb is a narrow net — "kitchen" near Wentworthville
+  // can genuinely match nothing. Widen to the whole country before giving up.
+  if (where && HAS_JOBS) {
+    try {
+      const national = await searchJobsAdzuna({ query, where: "" });
+      if (national.length) return national.slice(0, EXT_LIMIT);
+    } catch (e) {
+      console.warn("Adzuna national retry failed:", e.message);
+    }
+  }
   return searchJobsJobicy(query);
 }
 
