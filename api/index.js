@@ -445,7 +445,14 @@ module.exports = async function handler(req, res) {
       const vt = process.env.EBAY_VERIFICATION_TOKEN || "";
       if (method === "GET") {
         const cc = url.searchParams.get("challenge_code") || "";
-        const endpoint = (process.env.PUBLIC_BASE_URL || "https://dibs-au.vercel.app") + "/api/ebay-notifications";
+        /* eBay hashes against the endpoint URL exactly as registered in their
+           portal, so derive it from the incoming Host header rather than a
+           hardcoded constant. That keeps verification correct across every
+           alias this app answers on, and survives future renames. */
+        const host = process.env.PUBLIC_BASE_URL
+          ? process.env.PUBLIC_BASE_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")
+          : (req.headers["x-forwarded-host"] || req.headers.host || "");
+        const endpoint = "https://" + host + "/api/ebay-notifications";
         const hash = crypto.createHash("sha256").update(cc + vt + endpoint).digest("hex");
         return send(res, 200, { challengeResponse: hash });
       }
