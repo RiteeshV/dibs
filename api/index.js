@@ -10,8 +10,10 @@ const crypto = require("crypto");
    that sessions don't survive a restart locally, which is fine for dev. */
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 if (!process.env.SESSION_SECRET) console.warn("SESSION_SECRET not set — using a random per-process key; sessions will not survive a restart.");
+/* Accept either name: SUPABASE_SERVICE_KEY when the variables are set by hand,
+   or SUPABASE_SERVICE_ROLE_KEY as injected by Vercel's Supabase integration. */
 const SUPA_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
-const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const HAS_DB = !!(SUPA_URL && SUPA_KEY);
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID || "";
