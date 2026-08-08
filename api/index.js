@@ -25,6 +25,9 @@ const HAS_DOMAIN = !!(DOMAIN_CLIENT_ID && DOMAIN_CLIENT_SECRET);
 const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID || "";
 const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY || "";
 const HAS_JOBS = !!(ADZUNA_APP_ID && ADZUNA_APP_KEY);
+// Services fall back to OpenStreetMap, which needs no key — so this is always on
+const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY || "";
+const UA = "Dibs/1.0 (+https://dibs-au.vercel.app)";
 
 const CLAIM_HOLD_DAYS = 2;
 const FLAGS_TO_OBSERVE = 2;
@@ -382,6 +385,164 @@ async function searchJobs({ query, where }) {
   }));
 }
 
+/* Services — two sources, best-available. Google Places gives ratings and hours
+   but needs a billing-enabled key; OpenStreetMap needs nothing at all, so it is
+   the always-on fallback rather than an error state. Photos are deliberately
+   skipped: Places photo URLs embed the API key, and we don't ship keys to the
+   browser. */
+const OSM_SERVICE_LABELS = {
+  plumber: "Plumber", electrician: "Electrician", carpenter: "Carpenter", painter: "Painter",
+  gardener: "Gardener", cleaner: "Cleaner", locksmith: "Locksmith", handyman: "Handyman",
+  roofer: "Roofer", tiler: "Tiler", plasterer: "Plasterer", hvac: "Heating & cooling",
+  car_repair: "Mechanic", hairdresser: "Hairdresser", laundry: "Laundry",
+  dry_cleaning: "Dry cleaning", florist: "Florist", shoe_repair: "Shoe repair",
+  veterinary: "Vet", removals: "Removalist",
+};
+let geoCache = {};
+async function geocodeSuburb(place) {
+  const key = place.toLowerCase();
+  if (geoCache[key]) return geoCache[key];
+  const u = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(place);
+  const res = await fetch(u, { headers: { "User-Agent": UA, "Accept-Language": "en-AU" } });
+  if (!res.ok) throw new Error("Geocode failed: " + res.status);
+  const rows = await res.json();
+  if (!rows.length) return null;
+  geoCache[key] = { lat: Number(rows[0].lat), lon: Number(rows[0].lon) };
+  return geoCache[key];
+}
+async function searchServicesOSM(place, query) {
+  const at = await geocodeSuburb(place);
+  if (!at) return [];
+  const around = "around:6000," + at.lat + "," + at.lon;
+  // craft=* on its own drags in breweries and distilleries, so trades are whitelisted
+  const CRAFT = "plumber|electrician|carpenter|painter|gardener|hvac|roofer|tiler|plasterer|stonemason|locksmith|handyman|upholsterer|metal_construction|window_construction|glaziery|electronics_repair|floorer|caterer|photographer|sawmiller|scaffolder";
+  const ql = "[out:json][timeout:20];(" +
+    'node(' + around + ')["craft"~"^(' + CRAFT + ')$"];' +
+    'node(' + around + ')["shop"~"^(car_repair|hairdresser|laundry|dry_cleaning|florist|shoe_repair|locksmith|computer_repair)$"];' +
+    'node(' + around + ')["amenity"~"^(veterinary)$"];' +
+    ");out body 120;";
+  const res = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
+    body: "data=" + encodeURIComponent(ql),
+  });
+  if (!res.ok) throw new Error("Overpass failed: " + res.status);
+  const j = await res.json();
+  const q = (query || "").toLowerCase();
+  const rows = (j.elements || [])
+    .filter((el) => el.tags && el.tags.name)
+    .map((el) => {
+      const t = el.tags;
+      const kind = t.craft || t.shop || t.amenity || "";
+      const suburbTag = t["addr:suburb"] || t["addr:city"] || "";
+      const street = [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" ");
+      return {
+        title: t.name,
+        kind: OSM_SERVICE_LABELS[kind] || kind.replace(/_/g, " "),
+        where: [street, suburbTag].filter(Boolean).join(", ") || null,
+        rating: null,
+        reviews: null,
+        url: "https://www.openstreetmap.org/node/" + el.id,
+        source: "OpenStreetMap",
+      };
+    })
+    .filter((r) => !q || (r.title + " " + r.kind).toLowerCase().includes(q));
+  // round-robin by trade so you don't get six laundromats and nothing else
+  const byKind = {};
+  for (const r of rows) (byKind[r.kind] = byKind[r.kind] || []).push(r);
+  const queues = Object.values(byKind);
+  const out = [];
+  while (out.length < 6 && queues.some((qq) => qq.length)) {
+    for (const qq of queues) {
+      if (!qq.length) continue;
+      out.push(qq.shift());
+      if (out.length === 6) break;
+    }
+  }
+  return out;
+}
+async function searchServicesPlaces(place, query) {
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": PLACES_KEY,
+      "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.googleMapsUri,places.primaryTypeDisplayName",
+    },
+    body: JSON.stringify({
+      textQuery: (query || "trades and home services") + " in " + place,
+      maxResultCount: 6,
+      regionCode: "AU",
+    }),
+  });
+  if (!res.ok) throw new Error("Places failed: " + res.status);
+  const j = await res.json();
+  return (j.places || []).slice(0, 6).map((p) => ({
+    title: (p.displayName && p.displayName.text) || "Local business",
+    kind: (p.primaryTypeDisplayName && p.primaryTypeDisplayName.text) || null,
+    where: p.formattedAddress || null,
+    rating: typeof p.rating === "number" ? p.rating : null,
+    reviews: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
+    url: p.googleMapsUri || "https://www.google.com/maps",
+    source: "Google",
+  }));
+}
+async function searchServices(place, query) {
+  if (PLACES_KEY) {
+    try {
+      const viaPlaces = await searchServicesPlaces(place, query);
+      if (viaPlaces.length) return viaPlaces;
+    } catch { /* fall through to OSM */ }
+  }
+  return searchServicesOSM(place, query);
+}
+
+/* Property market — ABS "Residential Dwellings" (RES_DWELL), the official
+   quarterly medians. Free, no key, no ABN. It can't show what's for sale today
+   the way Domain would, but it is real current data rather than a dead panel:
+   median price, quarter-on-quarter movement and how many places actually
+   changed hands. Prices are published in $'000. */
+const ABS_CAPITAL = { NSW: "1GSYD", VIC: "2GMEL", QLD: "3GBRI", SA: "4GADE", WA: "5GPER", TAS: "6GHOB", NT: "7GDAR", ACT: "8ACTE" };
+const ABS_REGION_LABEL = { "1GSYD": "Greater Sydney", "2GMEL": "Greater Melbourne", "3GBRI": "Greater Brisbane", "4GADE": "Greater Adelaide", "5GPER": "Greater Perth", "6GHOB": "Greater Hobart", "7GDAR": "Greater Darwin", "8ACTE": "the ACT", AUS: "Australia" };
+async function searchPropertyStats(region) {
+  const url = "https://data.api.abs.gov.au/rest/data/ABS,RES_DWELL,1.0.0/1+2+3+4." + region +
+    ".?lastNObservations=2&dimensionAtObservation=AllDimensions";
+  const res = await fetch(url, { headers: { Accept: "application/vnd.sdmx.data+json", "User-Agent": UA } });
+  if (!res.ok) throw new Error("ABS failed: " + res.status);
+  const j = await res.json();
+  const st = j.data && j.data.structures && j.data.structures[0];
+  if (!st) return null;
+  const dims = st.dimensions.observation;
+  const order = dims.map((d) => d.id);
+  const vals = {};
+  dims.forEach((d) => { vals[d.id] = d.values; });
+  // observations are keyed by dimension *index*, e.g. "2:0:0:1"
+  const grid = {};
+  for (const [k, v] of Object.entries(j.data.dataSets[0].observations || {})) {
+    const p = k.split(":").map(Number);
+    const at = {};
+    order.forEach((id, i) => { at[id] = vals[id][p[i]]; });
+    grid[at.MEASURE.id + "|" + at.TIME_PERIOD.id] = v[0];
+  }
+  const periods = vals.TIME_PERIOD.map((t) => t.id).sort().reverse(); // newest first
+  const [nowQ, prevQ] = periods;
+  const row = (medianId, countId, label) => {
+    const cur = grid[medianId + "|" + nowQ], prev = grid[medianId + "|" + prevQ];
+    if (cur == null) return null;
+    return {
+      label,
+      median: Math.round(cur * 1000),
+      change: prev ? Math.round(((cur - prev) / prev) * 1000) / 10 : null,
+      transfers: grid[countId + "|" + nowQ] != null ? grid[countId + "|" + nowQ] : null,
+    };
+  };
+  return {
+    region: ABS_REGION_LABEL[region] || region,
+    period: nowQ,
+    rows: [row("3", "1", "Houses"), row("4", "2", "Units & apartments")].filter(Boolean),
+  };
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
@@ -610,6 +771,29 @@ module.exports = async function handler(req, res) {
         return send(res, 200, { results: await searchJobs({ query: q, where }) });
       } catch {
         return send(res, 502, { error: "Couldn't reach the job feed — try again." });
+      }
+    }
+
+    if (path === "/search/services" && method === "GET") {
+      const q = String(url.searchParams.get("q") || "").trim().slice(0, 60);
+      const place = url.searchParams.get("scope") === "all"
+        ? (me.state || "Australia")
+        : [me.suburb, me.state].filter(Boolean).join(", ");
+      try {
+        return send(res, 200, { results: await searchServices(place, q) });
+      } catch {
+        return send(res, 502, { error: "Couldn't reach the local business directory — try again." });
+      }
+    }
+
+    if (path === "/search/property-stats" && method === "GET") {
+      const region = url.searchParams.get("scope") === "all" ? "AUS" : (ABS_CAPITAL[me.state] || "AUS");
+      try {
+        const stats = await searchPropertyStats(region);
+        if (!stats || !stats.rows.length) return send(res, 200, { stats: null });
+        return send(res, 200, { stats });
+      } catch {
+        return send(res, 502, { error: "Couldn't reach the ABS data feed — try again." });
       }
     }
 

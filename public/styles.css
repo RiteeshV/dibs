@@ -275,6 +275,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .jobcard .jm{font-size:11.5px;color:var(--soft);margin-top:5px;line-height:1.35}
 .jtags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
 .jtag{font-size:10.5px;font-weight:700;color:var(--teal);background:var(--tealglow);border-radius:999px;padding:3px 8px;text-transform:capitalize}
+/* ABS property medians — figures, not listings, so they get a stat card */
+.statrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.statcard{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--card2)}
+.statcard .sl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--faint)}
+.statcard .sv{font-family:'Anton',sans-serif;font-size:27px;letter-spacing:.5px;margin:6px 0 2px;color:var(--ink)}
+.statcard .sc{font-size:11.5px;font-weight:700;color:var(--soft)}
+.statcard .sc.up{color:var(--amber)}   /* dearer for buyers, not an error */
+.statcard .sc.down{color:var(--teal)}
+.statcard .sm{font-size:11px;color:var(--faint);margin-top:5px}
 .comparebar{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 8px 8px 16px;box-shadow:var(--shadow-lift);z-index:40;font-size:12.5px;font-weight:600;color:var(--soft)}
 @media(min-width:940px){.comparebar{bottom:26px}}
 .comparegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px}

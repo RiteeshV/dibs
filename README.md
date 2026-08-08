@@ -23,6 +23,8 @@ Dibs puts a clock on that. You post an item; neighbours can claim it; if nobody 
 **Live external listings.** Category selection triggers an inline "From the web" panel:
 - **eBay AU** — OAuth2 client-credentials against the Browse API, returning real listings with images and prices, optionally scoped to a marketplace category so a vehicle search returns cars rather than car parts. Includes the Marketplace Account Deletion notification endpoint eBay requires before a production keyset is enabled (SHA-256 challenge–response).
 - **Adzuna** — Australian job ads, suburb- or nationwide-scoped, rendered as text-led cards with salary and contract type.
+- **Google Places / OpenStreetMap** — local trades and services. Places is used when a key is present (ratings, addresses); otherwise it falls back to OpenStreetMap via Nominatim + Overpass, which needs no key at all, so this category always has real data. Results are de-duplicated round-robin by trade so one category can't fill the panel. Places photos are deliberately not used — their URLs embed the API key.
+- **ABS** — official quarterly median sale prices (`RES_DWELL`), used for property when Domain isn't connected. Free, no key, no ABN.
 - **Domain.com.au** — a complete Listings API integration (OAuth2, cached tokens, suburb/state-scoped residential search). Access is gated behind a commercial agreement, so it ships **disabled and degrades gracefully** to branded source links rather than erroring. See "Honest status" below.
 
 **Graceful degradation as a design rule.** Every external integration is feature-flagged off a `/config` endpoint. Missing credentials never surface as an error to the user — the UI falls back to a different, still-useful state.
@@ -66,6 +68,7 @@ DOMAIN_CLIENT_ID          # enables inline Domain property results
 DOMAIN_CLIENT_SECRET
 ADZUNA_APP_ID             # enables inline job listings
 ADZUNA_APP_KEY
+GOOGLE_PLACES_API_KEY     # optional; services fall back to OpenStreetMap without it
 ```
 
 ## Honest status
@@ -75,7 +78,8 @@ This is a portfolio project, and it's worth being straight about what is and isn
 - **eBay integration is fully working in production** — real listings, verified end-to-end.
 - **Domain integration is complete but inactive.** The code, OAuth flow and rendering all work and are deployed; credentials authenticate successfully (`200` on token). The Agents & Listings package requires a registered business and a commercial agreement with Domain, so the search endpoint returns `403` and the app falls back to source links. It's kept in the codebase deliberately — handling an unavailable dependency cleanly is part of the design.
 - **Job listings are built and ship disabled**, pending a free Adzuna developer key. Unlike Domain, that key needs no business registration, so this one is a signup away.
-- **realestate.com.au, Carsales and Seek** are intentionally *not* scraped. None expose a public listings API, and scraping them would breach their terms and break constantly. They appear as clearly-labelled outbound links instead.
+- **Property shows official ABS medians, not live listings.** That is a deliberate substitution, not a mock: live listings need a Domain commercial agreement, so the panel shows what places actually sold for instead of pretending to have listings it doesn't.
+- **realestate.com.au, Carsales, Seek and Airtasker** are intentionally *not* scraped. None expose a public listings API, and scraping them would breach their terms and break constantly. They appear as clearly-labelled outbound links instead.
 - Payments are not implemented; priced handoffs generate a receipt record only.
 
 ## Layout

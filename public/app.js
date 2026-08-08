@@ -308,7 +308,7 @@ var googleClientId=null, ebayEnabled=false, domainEnabled=false, jobsEnabled=fal
    eBay AU listings (images/prices) through our API proxy; categories whose big AU
    players offer no public API (Carsales, realestate.com.au, Seek…) get branded
    source tiles instead — never a fake scrape. */
-var EXT_SEEDS={vehicles:"car",furniture:"furniture",electronics:"electronics",clothing:"clothes",family:"baby kids",entertainment:"movies games",books:"books",kitchen:"kitchen appliances",toys:"toys games",garden:"garden outdoor",sports:"sporting goods",pets:"pet supplies",homegoods:"home decor",homeimprove:"power tools",music:"musical instruments",office:"office supplies",hobbies:"craft hobby",other:"secondhand"};
+var EXT_SEEDS={vehicles:"car",classifieds:"secondhand",furniture:"furniture",electronics:"electronics",clothing:"clothes",family:"baby kids",entertainment:"movies games",books:"books",kitchen:"kitchen appliances",toys:"toys games",garden:"garden outdoor",sports:"sporting goods",pets:"pet supplies",homegoods:"home decor",homeimprove:"power tools",music:"musical instruments",office:"office supplies",hobbies:"craft hobby",other:"secondhand"};
 var EXT_LINK_SITES={
   vehicles:[["Carsales","https://www.carsales.com.au"],["Gumtree Cars","https://www.gumtree.com.au/s-cars-vans-utes/c18320"],["Marketplace","https://www.facebook.com/marketplace/category/vehicles"]],
   property_rent:[["realestate.com.au","https://www.realestate.com.au/rent"],["Domain","https://www.domain.com.au/rent"]],
@@ -342,6 +342,46 @@ function loadExternal(cat,q,force){
     }).catch(function(e){
       if(extKey!==dKey)return;
       extLoading=false;extResults={mode:"error",error:e.message};
+      repaintExternal();
+    });
+    return;
+  }
+  /* Services: Google Places if a key is set, otherwise OpenStreetMap — the
+     backend picks, so there is always something real to show here. */
+  if(cat==="services"){
+    var sq=(q||"").trim();
+    var sKey="svc:"+feedScope+":"+sq.toLowerCase();
+    if(!force&&extKey===sKey)return;
+    extKey=sKey;
+    if(extCache[sKey]){extResults={mode:"services",cat:cat,items:extCache[sKey]};extLoading=false;return;}
+    extLoading=true;extResults=null;
+    api("/search/services?scope="+(feedScope==="all"?"all":"suburb")+(sq?"&q="+encodeURIComponent(sq):"")).then(function(j){
+      if(extKey!==sKey)return;
+      extCache[sKey]=j.results||[];
+      extLoading=false;extResults={mode:"services",cat:cat,items:extCache[sKey]};
+      repaintExternal();
+    }).catch(function(e){
+      if(extKey!==sKey)return;
+      extLoading=false;extResults={mode:"error",error:e.message,cat:cat};
+      repaintExternal();
+    });
+    return;
+  }
+  /* Property without Domain access: official ABS medians beat an empty panel */
+  if(cat&&DOMAIN_CATS[cat]&&!domainEnabled){
+    var pKey="absprop:"+feedScope;
+    if(!force&&extKey===pKey)return;
+    extKey=pKey;
+    if(extCache[pKey]){extResults={mode:"propstats",cat:cat,stats:extCache[pKey]};extLoading=false;return;}
+    extLoading=true;extResults=null;
+    api("/search/property-stats?scope="+(feedScope==="all"?"all":"suburb")).then(function(j){
+      if(extKey!==pKey)return;
+      extCache[pKey]=j.stats||null;
+      extLoading=false;extResults={mode:"propstats",cat:cat,stats:extCache[pKey]};
+      repaintExternal();
+    }).catch(function(e){
+      if(extKey!==pKey)return;
+      extLoading=false;extResults={mode:"error",error:e.message,cat:cat};
       repaintExternal();
     });
     return;
@@ -898,6 +938,46 @@ function externalPanelHtml(){
         '</a>';
       }).join("")+'</div>'+
       '<a class="pill gh sm" style="display:inline-block;margin-top:10px;text-decoration:none" href="https://www.domain.com.au/'+(extResults.cat==="property_rent"?"rent":"sale")+'" target="_blank" rel="noopener">More on Domain <span class="ic-inline">'+ICONS.external+'</span></a>';
+    }
+  }else if(extResults&&extResults.mode==="services"){
+    var swhere=feedScope==="all"?"across Australia":("around "+esc(me.suburb));
+    if(!extResults.items.length){
+      inner='<p class="hint" style="margin:0">No listed trades or services '+swhere+' yet — try All Australia, or a keyword like “cleaning”.</p>';
+    }else{
+      var ssrc=extResults.items[0].source;
+      inner='<p class="hint" style="margin:0 0 10px">Local businesses '+swhere+', via '+esc(ssrc)+'.</p>'+
+      '<div class="jobrow">'+extResults.items.map(function(it){
+        var stars=it.rating?('★ '+it.rating.toFixed(1)+(it.reviews?' ('+it.reviews+')':'')):null;
+        return '<a class="jobcard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
+          '<div class="jt">'+esc(it.title)+'</div>'+
+          (it.where?'<div class="jm">'+esc(it.where)+'</div>':'')+
+          ((it.kind||stars)?'<div class="jtags">'+[it.kind,stars].filter(Boolean).map(function(t){return '<span class="jtag">'+esc(t)+'</span>';}).join("")+'</div>':'')+
+          '<span class="esrc">'+esc(it.source)+'</span>'+
+        '</a>';
+      }).join("")+'</div>'+
+      '<div class="ddelsewhere" style="padding:10px 0 0">'+(EXT_LINK_SITES.services||[]).map(function(s){
+        return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
+      }).join("")+'</div>';
+    }
+  }else if(extResults&&extResults.mode==="propstats"){
+    var pst=extResults.stats;
+    var plinks='<div class="ddelsewhere" style="padding:10px 0 0">'+(EXT_LINK_SITES[extResults.cat]||[]).map(function(s){
+      return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
+    }).join("")+'</div>';
+    if(!pst){
+      inner='<p class="hint" style="margin:0">Market figures are unavailable right now.</p>'+plinks;
+    }else{
+      inner='<p class="hint" style="margin:0 0 10px">What places actually sold for in '+esc(pst.region)+' — official ABS figures, '+esc(pst.period)+'.</p>'+
+      '<div class="statrow">'+pst.rows.map(function(r){
+        var dir=r.change==null?"":(r.change>0?"up":r.change<0?"down":"flat");
+        return '<div class="statcard">'+
+          '<div class="sl">'+esc(r.label)+'</div>'+
+          '<div class="sv">'+money(r.median)+'</div>'+
+          (r.change!=null?'<div class="sc '+dir+'">'+(r.change>0?"▲ ":r.change<0?"▼ ":"")+Math.abs(r.change).toFixed(1)+'% on last quarter</div>':'')+
+          (r.transfers!=null?'<div class="sm">'+r.transfers.toLocaleString()+' sold that quarter</div>':'')+
+        '</div>';
+      }).join("")+'</div>'+
+      '<p class="hint" style="margin:10px 0 0">Live listings need a Domain agreement — these are the medians behind them.</p>'+plinks;
     }
   }else if(extResults&&extResults.mode==="jobs"){
     var jwhere=feedScope==="all"?"across Australia":("near "+esc(me.suburb));
