@@ -403,7 +403,7 @@ async function geocodeSuburb(place) {
   const key = place.toLowerCase();
   if (geoCache[key]) return geoCache[key];
   const u = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(place);
-  const res = await fetch(u, { headers: { "User-Agent": UA, "Accept-Language": "en-AU" } });
+  const res = await fetch(u, { headers: { "User-Agent": UA, "Accept-Language": "en-AU" }, signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error("Geocode failed: " + res.status);
   const rows = await res.json();
   if (!rows.length) return null;
@@ -416,7 +416,9 @@ async function searchServicesOSM(place, query) {
   const around = "around:6000," + at.lat + "," + at.lon;
   // craft=* on its own drags in breweries and distilleries, so trades are whitelisted
   const CRAFT = "plumber|electrician|carpenter|painter|gardener|hvac|roofer|tiler|plasterer|stonemason|locksmith|handyman|upholsterer|metal_construction|window_construction|glaziery|electronics_repair|floorer|caterer|photographer|sawmiller|scaffolder";
-  const ql = "[out:json][timeout:20];(" +
+  // kept well under the platform function timeout so a slow Overpass fails as a
+  // clean 502 rather than the whole function being killed mid-request
+  const ql = "[out:json][timeout:12];(" +
     'node(' + around + ')["craft"~"^(' + CRAFT + ')$"];' +
     'node(' + around + ')["shop"~"^(car_repair|hairdresser|laundry|dry_cleaning|florist|shoe_repair|locksmith|computer_repair)$"];' +
     'node(' + around + ')["amenity"~"^(veterinary)$"];' +
@@ -425,6 +427,7 @@ async function searchServicesOSM(place, query) {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
     body: "data=" + encodeURIComponent(ql),
+    signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error("Overpass failed: " + res.status);
   const j = await res.json();
@@ -507,7 +510,7 @@ const ABS_REGION_LABEL = { "1GSYD": "Greater Sydney", "2GMEL": "Greater Melbourn
 async function searchPropertyStats(region) {
   const url = "https://data.api.abs.gov.au/rest/data/ABS,RES_DWELL,1.0.0/1+2+3+4." + region +
     ".?lastNObservations=2&dimensionAtObservation=AllDimensions";
-  const res = await fetch(url, { headers: { Accept: "application/vnd.sdmx.data+json", "User-Agent": UA } });
+  const res = await fetch(url, { headers: { Accept: "application/vnd.sdmx.data+json", "User-Agent": UA }, signal: AbortSignal.timeout(12000) });
   if (!res.ok) throw new Error("ABS failed: " + res.status);
   const j = await res.json();
   const st = j.data && j.data.structures && j.data.structures[0];

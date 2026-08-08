@@ -4,6 +4,9 @@
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/terms", "destination": "/terms.html" }
   ],
+  "functions": {
+    "api/index.js": { "maxDuration": 30 }
+  },
   "crons": [
     { "path": "/api/cron/keepwarm", "schedule": "0 6 * * *" }
   ]
