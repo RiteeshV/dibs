@@ -134,16 +134,9 @@ var SUBURB_EXAMPLES_BY_STATE={
   ACT:["Braddon","Kingston","Manuka","Dickson","Belconnen"],
   NT:["Nightcliff","Parap","Fannie Bay","Stuart Park","Palmerston"]
 };
-var suburbPhState="NSW",suburbPhIdx=Math.floor(Math.random()*7),suburbPhTimer=null;
-function suburbPlaceholderText(){var list=SUBURB_EXAMPLES_BY_STATE[suburbPhState]||SUBURB_EXAMPLES_BY_STATE.NSW;return list[suburbPhIdx%list.length];}
-function startSuburbPlaceholderRotation(){
-  clearInterval(suburbPhTimer);
-  suburbPhTimer=setInterval(function(){
-    suburbPhIdx++;
-    var el=document.getElementById("a-suburb");
-    if(el&&document.activeElement!==el&&!el.value)el.placeholder="e.g. "+suburbPlaceholderText();
-  },3000);
-}
+var suburbPhState="NSW",suburbPhIdx=Math.floor(Math.random()*7);
+function suburbExamples(){return SUBURB_EXAMPLES_BY_STATE[suburbPhState]||SUBURB_EXAMPLES_BY_STATE.NSW;}
+function suburbPlaceholderText(){var list=suburbExamples();return list[suburbPhIdx%list.length];}
 var AU_STATES=[["NSW","New South Wales"],["VIC","Victoria"],["QLD","Queensland"],["WA","Western Australia"],["SA","South Australia"],["TAS","Tasmania"],["ACT","Australian Capital Territory"],["NT","Northern Territory"]];
 var HERO_SLIDES=[
   {img:"https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=1600&q=70&auto=format&fit=crop",eyebrow:"Vehicles",headline:"Find your next ride",cat:"vehicles"},
@@ -158,17 +151,96 @@ var HERO_SLIDES=[
 ];
 var heroIdx=0,heroTimer=null;
 var SEARCH_EXAMPLES=["car under 15000","free couch","3br rental Parramatta","handyman services","gaming console","garden tools","free moving boxes","toddler toys","electric guitar","vintage bike","office desk","house for sale"];
-var searchPhIdx=0,searchPhTimer=null;
+var searchPhIdx=0;
 function searchPlaceholderText(){return "Try “"+SEARCH_EXAMPLES[searchPhIdx%SEARCH_EXAMPLES.length]+"”…";}
-function startSearchPlaceholderRotation(){
-  clearInterval(searchPhTimer);
-  searchPhTimer=setInterval(function(){
-    searchPhIdx=(searchPhIdx+1)%SEARCH_EXAMPLES.length;
-    if(tab==="feed"){
-      var el=document.getElementById("f-search");
-      if(el&&document.activeElement!==el&&!el.value)el.placeholder=searchPlaceholderText();
-    }
-  },3500);
+
+/* ---------- animated example rotator ----------
+   You can't animate a placeholder attribute, so for every field that shows an
+   "e.g. …" hint we blank the real placeholder and lay a clipped overlay on top:
+   the words are stacked, the outgoing one rides out the top while the next one
+   springs up from below. Overlay is aria-hidden and pointer-events:none, so the
+   input still reads and behaves normally; it hides the moment you type. */
+var ROT_STEP_MS=2600, ROT_SETTLE_MS=1100;
+var rotators=[], rotTimer=null;
+/* Each letter is its own face on a barrel: the outgoing word rolls down and
+   away while the incoming one rolls up into place, staggered left-to-right.
+   Long strings get a tighter stagger so the whole word still lands in ~1s. */
+function rotStagger(w){return Math.min(.055,.9/Math.max(w.length,1)).toFixed(3);}
+function rollLetters(w){
+  return w.split("").map(function(ch,i){
+    return '<span class="exch" style="--i:'+i+'">'+(ch===" "?"&nbsp;":esc(ch))+'</span>';
+  }).join("");
+}
+function stopRotators(){
+  rotators.forEach(function(r){if(r.el&&r.el.parentNode)r.el.parentNode.removeChild(r.el);});
+  rotators=[];
+}
+function rotSize(r){var w=r.spans[r.i].offsetWidth;if(w)r.slot.style.width=w+"px";}
+function rotSync(r){r.el.classList.toggle("gone",!!r.input.value);}
+function rotAdvance(r){
+  if(r.paused||r.input.value||r.words.length<2)return;
+  var prev=r.i;
+  r.i=(r.i+1)%r.words.length;
+  r.spans[prev].classList.remove("on");
+  r.spans[prev].classList.add("out");
+  r.spans[r.i].classList.add("on");
+  rotSize(r);
+  setTimeout(function(){                       // park the departed word back below, silently
+    var s=r.spans[prev];
+    if(!s.classList.contains("out"))return;
+    s.classList.add("nt");
+    s.classList.remove("out");
+    void s.offsetWidth;
+    s.classList.remove("nt");
+  },ROT_SETTLE_MS);
+}
+function mountRotator(input,words,opts){
+  if(!input||!words||!words.length)return null;
+  var host=input.parentElement;
+  if(!host)return null;
+  opts=opts||{};
+  if(getComputedStyle(host).position==="static")host.style.position="relative";
+  var el=document.createElement("div");
+  el.className="exrot";
+  el.setAttribute("aria-hidden","true");
+  el.innerHTML=(opts.lead?'<span class="exfix">'+esc(opts.lead)+'</span>':"")+
+    '<span class="exslot">'+words.map(function(w,i){
+      return '<span class="exword'+(i===0?" on":"")+'" style="--st:'+rotStagger(w)+'s">'+rollLetters(w)+'</span>';
+    }).join("")+'</span>'+
+    (opts.tail?'<span class="exfix">'+esc(opts.tail)+'</span>':"");
+  var cs=getComputedStyle(input);
+  el.style.fontFamily=cs.fontFamily;el.style.fontSize=cs.fontSize;
+  el.style.fontWeight=cs.fontWeight;el.style.letterSpacing=cs.letterSpacing;
+  el.style.paddingLeft=cs.paddingLeft;el.style.paddingRight=cs.paddingRight;
+  host.appendChild(el);
+  el.style.left=input.offsetLeft+"px";
+  el.style.top=input.offsetTop+"px";
+  el.style.width=input.offsetWidth+"px";
+  el.style.height=input.offsetHeight+"px";
+  var r={el:el,input:input,words:words,i:0,paused:false,
+         slot:el.querySelector(".exslot"),spans:[].slice.call(el.querySelectorAll(".exword"))};
+  input.placeholder="";
+  rotSize(r);rotSync(r);
+  input.addEventListener("input",function(){rotSync(r);});
+  input.addEventListener("focus",function(){r.paused=true;});
+  input.addEventListener("blur",function(){r.paused=false;});
+  rotators.push(r);
+  return r;
+}
+function mountRotators(){
+  stopRotators();
+  var s=document.getElementById("f-search");
+  if(s)mountRotator(s,SEARCH_EXAMPLES,{lead:"Try “",tail:"”"});
+  var kw=document.getElementById("f-kw"),kwEx=catExamples(catFilter);
+  if(kw&&kwEx)mountRotator(kw,kwEx,{lead:"e.g. "});
+  mountSuburbRotator();
+  var ti=document.getElementById("f-title");
+  if(ti)mountRotator(ti,TITLE_EXAMPLES,{lead:"e.g. "});
+  if(!rotTimer)rotTimer=setInterval(function(){rotators.forEach(rotAdvance);},ROT_STEP_MS);
+}
+function mountSuburbRotator(){
+  var sb=document.getElementById("a-suburb");
+  if(sb)mountRotator(sb,suburbExamples(),{lead:"e.g. "});
 }
 function heroHtml(){
   var s=HERO_SLIDES[heroIdx%HERO_SLIDES.length];
@@ -178,7 +250,10 @@ function heroHtml(){
       '<h1 class="heroh">'+esc(s.headline)+'</h1>'+
       '<button type="button" class="pill pri" data-act="herogo" data-id="'+esc(s.cat)+'">Browse '+esc(s.eyebrow)+' →</button>'+
     '</div>'+
-    '<div class="herodots">'+HERO_SLIDES.map(function(x,i){return '<span class="hdot'+(i===heroIdx?" on":"")+'" data-act="herodot" data-id="'+i+'"></span>';}).join("")+'</div>'+
+    '<div class="herodots">'+HERO_SLIDES.map(function(x,i){
+      return '<button type="button" class="hdot'+(i===heroIdx?" on":"")+'" data-act="herodot" data-id="'+i+'"'+
+             ' aria-label="Show '+esc(x.eyebrow)+'"'+(i===heroIdx?' aria-current="true"':"")+'></button>';
+    }).join("")+'</div>'+
   '</div>';
 }
 function swapHero(){
@@ -199,7 +274,35 @@ function startHeroRotation(){
 var me=null, items=[], notifs=[], receipts=[], unread=0, tab="feed", authMode="login", dbMode="demo", feedScope="suburb", searchQ="", catFilter="all", showAllCats=false;
 var filterMin="",filterMax="",filterKeyword="";
 var CAT_FILTER_LABEL={vehicles:"Make or model",property_rent:"Bedrooms or feature",property_sale:"Bedrooms or feature",jobs:"Role or industry",services:"Type of service",classifieds:"Keyword"};
-var CAT_FILTER_PLACEHOLDER={vehicles:"e.g. Corolla",property_rent:"e.g. 2 bedroom",property_sale:"e.g. 3 bedroom",jobs:"e.g. barista",services:"e.g. cleaning"};
+/* Example words for the animated rotators — one list per category, so the hint
+   under every keyword box keeps cycling through things people actually search. */
+var CAT_FILTER_EXAMPLES={
+  vehicles:["Corolla","HiLux dual cab","Mazda 3 hatch","low kms, auto","Ranger XLT","diesel wagon","first car","7 seater"],
+  property_rent:["2 bedroom","pet friendly","near the station","furnished studio","house with a yard","granny flat"],
+  property_sale:["3 bedroom","renovated kitchen","big backyard","townhouse","first home","double garage"],
+  jobs:["barista","warehouse, casual","weekend shifts","apprentice sparky","admin, part time","hospitality"],
+  services:["cleaning","lawn mowing","furniture removal","handyman","end of lease clean","pet sitting"],
+  classifieds:["anything, really","free to a good home","moving out sale","garage sale finds"],
+  furniture:["two-seater couch","dining table","bookshelf","bed frame","office chair","outdoor setting"],
+  electronics:["PS5","monitor","laptop","air fryer","noise cancelling headphones","projector"],
+  clothing:["winter coat","school uniform","running shoes","vintage denim","formal dress"],
+  family:["pram","cot","high chair","car seat","baby carrier"],
+  entertainment:["board games","vinyl records","Switch games","DVD boxset"],
+  books:["cookbooks","uni textbooks","crime novels","kids picture books"],
+  kitchen:["stand mixer","air fryer","dinner set","coffee machine","slow cooker"],
+  toys:["LEGO","trampoline","scooter","puzzles","dolls house"],
+  garden:["pots and planters","lawn mower","outdoor setting","garden tools","BBQ"],
+  sports:["surfboard","road bike","weights set","golf clubs","cricket gear"],
+  pets:["dog crate","fish tank","cat tower","bird cage"],
+  homegoods:["rug","floor lamp","mirror","curtains","artwork"],
+  homeimprove:["power tools","paint","timber offcuts","tiles","ladder"],
+  music:["acoustic guitar","keyboard","amp","drum kit","violin"],
+  office:["standing desk","office chair","filing cabinet","monitor arm"],
+  hobbies:["sewing machine","art supplies","camera gear","model kits"],
+  other:["anything, really","free to a good home","moving out sale"]
+};
+function catExamples(cat){return CAT_FILTER_EXAMPLES[cat]||null;}
+var TITLE_EXAMPLES=["Two-seater couch, minor wear","IKEA bookshelf, flat-packed","Bar fridge, works fine","Kids bike, 16 inch","Dining chairs x4","Box of moving boxes","Desk lamp, barely used","Pot plants, free to a good home"];
 var googleClientId=null, ebayEnabled=false, domainEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
 /* "From the web" — inline external results per category. Goods categories pull real
    eBay AU listings (images/prices) through our API proxy; categories whose big AU
@@ -293,7 +396,6 @@ function api(path,method,body){
 function boot(){
   applyTheme();
   bindModalOnce();
-  startSuburbPlaceholderRotation();
   window.addEventListener("resize",function(){if(me)positionDockLiquid();});
   api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;domainEnabled=!!j.domainEnabled;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
@@ -306,7 +408,6 @@ function refresh(){
 var pollTimer=null;
 function startPolling(){
   startHeroRotation();
-  startSearchPlaceholderRotation();
   clearInterval(pollTimer);
   pollTimer=setInterval(function(){
     if(!me)return;
@@ -693,7 +794,8 @@ function updateDropdown(boxId,query){
 function filterPanelHtml(){
   if(catFilter==="all"||catFilter==="free")return "";
   var kwLabel=CAT_FILTER_LABEL[catFilter]||"Keyword";
-  var kwPh=CAT_FILTER_PLACEHOLDER[catFilter]||"Refine your search";
+  var kwEx=catExamples(catFilter);
+  var kwPh=kwEx?"e.g. "+kwEx[0]:"Refine your search";
   return '<div class="filterpanel reveal">'+
     '<div class="fprow"><label>Min $</label><input type="number" id="f-min" min="0" value="'+esc(filterMin)+'" placeholder="0"></div>'+
     '<div class="fprow"><label>Max $</label><input type="number" id="f-max" min="0" value="'+esc(filterMax)+'" placeholder="Any"></div>'+
@@ -920,7 +1022,7 @@ function tickerHtml(){
 }
 function render(){
   var app=document.getElementById("app");
-  if(!me){app.innerHTML=tickerHtml()+viewAuth();bind();initScrollAnim();renderGoogleButton();return;}
+  if(!me){app.innerHTML=tickerHtml()+viewAuth();bind();initScrollAnim();mountRotators();renderGoogleButton();return;}
   var next=nextPickup();
   var d=daysTo(next);var lbl=d<=0?"Today":d===1?"Tomorrow":"in "+d+" days";
   var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():viewProfile();
@@ -948,6 +1050,7 @@ function render(){
   app.innerHTML=tickerHtml()+'<div class="shell">'+dock+'<div class="content">'+mtop+dtop+banner+'<main id="main">'+mainHtml+'</main></div></div>'+compareBar+dockm;
   bind();
   initScrollAnim();
+  mountRotators();
   positionDockLiquid();
 }
 function positionDockLiquid(){
@@ -979,9 +1082,13 @@ function bind(){
     if(e.target.id==="f-media")addMedia(e.target.files);
     if(e.target.id==="a-state"){
       suburbPhState=e.target.value;
-      suburbPhIdx=Math.floor(Math.random()*(SUBURB_EXAMPLES_BY_STATE[suburbPhState]||SUBURB_EXAMPLES_BY_STATE.NSW).length);
-      var sub=document.getElementById("a-suburb");
-      if(sub&&!sub.value)sub.placeholder="e.g. "+suburbPlaceholderText();
+      var sb=document.getElementById("a-suburb"),old=null;
+      rotators=rotators.filter(function(r){       // swap the suburb list for the new state's
+        if(r.input!==sb)return true;
+        old=r;return false;
+      });
+      if(old&&old.el.parentNode)old.el.parentNode.removeChild(old.el);
+      if(sb&&!sb.value)mountSuburbRotator();
     }
   };
   var fs=document.getElementById("f-search");
@@ -1139,7 +1246,13 @@ function act(action,id,el){
     render();
     var rail=document.querySelector(".catrail");if(rail)rail.scrollIntoView({behavior:"smooth",block:"center"});
     return;}
-  if(action==="herodot"){heroIdx=parseInt(id,10)||0;swapHero();return;}
+  if(action==="herodot"){
+    var hi=parseInt(id,10);
+    heroIdx=isNaN(hi)?0:hi;
+    swapHero();
+    startHeroRotation();   // give the slide you picked a full turn instead of yanking it in a second
+    return;
+  }
   if(action==="locate"){locate(el.dataset.target,el);return;}
   if(action==="psearch"){
     var q=currentSearchText();
