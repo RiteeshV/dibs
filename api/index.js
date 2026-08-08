@@ -152,6 +152,46 @@ function getCookie(req, name) {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+/* ---------------- Login throttling ----------------
+   Slows password guessing: after LOGIN_MAX_FAILS wrong attempts for the same
+   IP+email, that pair is locked out for LOGIN_LOCK_MS.
+
+   Honest caveat: this lives in per-instance memory, so on serverless an
+   attacker spread across many cold instances gets more attempts than the
+   nominal limit. It still raises the cost of a naive brute-force by orders of
+   magnitude with zero added latency or database writes (a DB-backed counter
+   would turn every failed login into a write, which is its own DoS vector).
+   A network-level WAF is the right complement for a determined attacker. */
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+if (!g.__ksRate) g.__ksRate = new Map();
+
+function clientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (fwd) return String(fwd).split(",")[0].trim();
+  return (req.socket && req.socket.remoteAddress) || "unknown";
+}
+function throttleKey(req, email) { return clientIp(req) + "|" + String(email || "").toLowerCase(); }
+
+function loginLockedFor(key) {
+  const e = g.__ksRate.get(key);
+  if (!e) return 0;
+  if (e.until && e.until > now()) return e.until - now();
+  if (e.until && e.until <= now()) g.__ksRate.delete(key);
+  return 0;
+}
+function noteLoginFailure(key) {
+  // opportunistic prune so the map can't grow without bound
+  if (g.__ksRate.size > 5000) {
+    for (const [k, v] of g.__ksRate) if (!v.until || v.until <= now()) g.__ksRate.delete(k);
+  }
+  const e = g.__ksRate.get(key) || { fails: 0, until: 0 };
+  e.fails += 1;
+  if (e.fails >= LOGIN_MAX_FAILS) { e.until = now() + LOGIN_LOCK_MS; e.fails = 0; }
+  g.__ksRate.set(key, e);
+}
+function clearLoginFailures(key) { g.__ksRate.delete(key); }
+
 const ANIMALS = ["Wombat","Koala","Magpie","Echidna","Dingo","Possum","Kooka","Wallaby","Quokka","Ibis","Galah","Bilby"];
 function anonHandle() {
   return ANIMALS[Math.floor(Math.random() * ANIMALS.length)] + "-" + (100 + Math.floor(Math.random() * 900));
@@ -464,12 +504,21 @@ module.exports = async function handler(req, res) {
 
     if (path === "/login" && method === "POST") {
       const email = String(body.email || "").trim().toLowerCase();
+      const rateKey = throttleKey(req, email);
+      const lockedMs = loginLockedFor(rateKey);
+      if (lockedMs > 0) {
+        const mins = Math.ceil(lockedMs / 60000);
+        return send(res, 429, { error: "Too many failed attempts. Try again in " + mins + " minute" + (mins === 1 ? "" : "s") + "." });
+      }
       const users = await db.list("users");
       const user = users.find((u) => u.email === email);
-      if (!user) return send(res, 401, { error: "Wrong email or password." });
+      if (!user) { noteLoginFailure(rateKey); return send(res, 401, { error: "Wrong email or password." }); }
       if (!user.passHash) return send(res, 401, { error: "This account uses Google sign-in — tap “Continue with Google” instead." });
-      if (hashPass(String(body.password || ""), user.salt) !== user.passHash)
+      if (hashPass(String(body.password || ""), user.salt) !== user.passHash) {
+        noteLoginFailure(rateKey);
         return send(res, 401, { error: "Wrong email or password." });
+      }
+      clearLoginFailures(rateKey);
       const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
       return send(res, 200, { ok: true, me: meView(user) }, sessionCookie(token));
     }
