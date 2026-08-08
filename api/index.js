@@ -25,6 +25,7 @@ const HAS_DOMAIN = !!(DOMAIN_CLIENT_ID && DOMAIN_CLIENT_SECRET);
 const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID || "";
 const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY || "";
 const HAS_JOBS = !!(ADZUNA_APP_ID && ADZUNA_APP_KEY);
+const JOOBLE_API_KEY = process.env.JOOBLE_API_KEY || "";
 // Services fall back to OpenStreetMap, which needs no key — so this is always on
 const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY || "";
 // how many external results each source returns; Places caps itself at 20
@@ -391,18 +392,21 @@ async function searchJobsJobicy(query) {
   }));
 }
 async function searchJobsAdzuna({ query, where }) {
+  // No content_type param: Adzuna spells it "content-type" and rejects the
+  // underscored form with a 400 — but only after auth passes, which is why a
+  // fake key returns 401 and a valid one returned 400. JSON is the default.
   const qs = new URLSearchParams({
-    app_id: ADZUNA_APP_ID,
-    app_key: ADZUNA_APP_KEY,
-    results_per_page: String(EXT_LIMIT),
-    content_type: "application/json",
+    app_id: ADZUNA_APP_ID.trim(),
+    app_key: ADZUNA_APP_KEY.trim(),
+    results_per_page: String(Math.min(EXT_LIMIT, 50)),
   });
   if (query) qs.set("what", query);
   if (where) qs.set("where", where);
   const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString(), { signal: AbortSignal.timeout(12000) });
   if (!res.ok) {
     // body often names the cause (bad key, plan limit); never log the query string, it carries the key
-    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    const raw = await res.text().catch(() => "");
+    const detail = raw.trim().startsWith("<") ? stripTags(raw).replace(/\s+/g, " ").slice(0, 180) : raw.slice(0, 180);
     throw new Error("Adzuna " + res.status + " " + detail);
   }
   const j = await res.json();
@@ -417,16 +421,54 @@ async function searchJobsAdzuna({ query, where }) {
     remote: false,
   }));
 }
+/* Jooble — another AU aggregator, free key on request. Same optional-key shape
+   as the others, so it simply adds coverage when configured. */
+async function searchJobsJooble({ query, where }) {
+  const res = await fetch("https://jooble.org/api/" + encodeURIComponent(JOOBLE_API_KEY.trim()), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": UA },
+    body: JSON.stringify({ keywords: query || "", location: where || "Australia" }),
+    signal: AbortSignal.timeout(12000),
+  });
+  if (!res.ok) throw new Error("Jooble " + res.status);
+  const j = await res.json();
+  return (j.jobs || []).slice(0, EXT_LIMIT).map((r) => ({
+    title: stripTags(r.title) || "Job listing",
+    company: stripTags(r.company) || null,
+    location: stripTags(r.location) || null,
+    salary: stripTags(r.salary) || null,
+    contract: stripTags(r.type).toLowerCase() || null,
+    url: r.link || "https://jooble.org",
+    source: "Jooble",
+    remote: false,
+  }));
+}
+
+/* Local aggregators run together and merge; each is optional, and Jobicy only
+   steps in when the merged result is empty. One source being down or unkeyed
+   quietly reduces coverage rather than emptying the panel. */
 async function searchJobs({ query, where }) {
-  if (HAS_JOBS) {
-    try {
-      const local = await searchJobsAdzuna({ query, where });
-      if (local.length) return local;
-      console.warn("Adzuna returned 0 results for where=" + JSON.stringify(where) + " — falling back to Jobicy.");
-    } catch (e) {
-      console.warn("Adzuna call failed, falling back to Jobicy:", e.message);
+  const sources = [];
+  if (HAS_JOBS) sources.push(["Adzuna", () => searchJobsAdzuna({ query, where })]);
+  if (JOOBLE_API_KEY) sources.push(["Jooble", () => searchJobsJooble({ query, where })]);
+
+  const settled = await Promise.allSettled(sources.map(([, fn]) => fn()));
+  const merged = [];
+  const seen = new Set();
+  settled.forEach((r, i) => {
+    if (r.status === "rejected") {
+      console.warn(sources[i][0] + " call failed:", r.reason && r.reason.message);
+      return;
     }
-  }
+    if (!r.value.length) console.warn(sources[i][0] + " returned 0 results for where=" + JSON.stringify(where));
+    for (const job of r.value) {
+      const key = (job.title + "|" + (job.company || "")).toLowerCase().replace(/\s+/g, " ").trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(job);
+    }
+  });
+  if (merged.length) return merged.slice(0, EXT_LIMIT);
   return searchJobsJobicy(query);
 }
 

@@ -872,7 +872,7 @@ function feedListHtml(){
   if(act.length)return act.map(function(it,i){return card(it,i);}).join("");
   /* If the web panel below is about to fill the screen with real listings, the
      big empty state is just a hole between the filters and the goods. */
-  var webComing=extLoading||(extResults&&((extResults.items&&extResults.items.length)||extResults.mode==="links"));
+  var webComing=extLoading||(extResults&&((extResults.items&&extResults.items.length)||extResults.mode==="links"||(extResults.mode==="propstats"&&extResults.stats)));
   var msg=searchQ?'Nothing matches "'+esc(searchQ)+'" on '+APP+' yet':
           (feedScope==="suburb"?'Nothing in '+esc(me.suburb)+' yet — try All Australia':'Nothing posted here yet');
   if(webComing)return '<div class="emptyslim reveal">'+msg+' — here\'s what\'s live elsewhere:</div>';
