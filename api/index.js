@@ -27,6 +27,8 @@ const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY || "";
 const HAS_JOBS = !!(ADZUNA_APP_ID && ADZUNA_APP_KEY);
 // Services fall back to OpenStreetMap, which needs no key — so this is always on
 const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY || "";
+// how many external results each source returns; Places caps itself at 20
+const EXT_LIMIT = 24;
 const UA = "Dibs/1.0 (+https://dibs-au.vercel.app)";
 
 const CLAIM_HOLD_DAYS = 2;
@@ -278,14 +280,14 @@ async function getEbayToken() {
 const EBAY_CATS = { vehicles: "9800" };
 async function searchEbay(query, categoryIds) {
   const token = await getEbayToken();
-  const base = "https://api.ebay.com/buy/browse/v1/item_summary/search?q=" + encodeURIComponent(query) + "&limit=6&filter=" + encodeURIComponent("itemLocationCountry:AU");
+  const base = "https://api.ebay.com/buy/browse/v1/item_summary/search?q=" + encodeURIComponent(query) + "&limit=" + EXT_LIMIT + "&filter=" + encodeURIComponent("itemLocationCountry:AU");
   const run = async (url) => {
     const res = await fetch(url, {
       headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_AU" },
     });
     if (!res.ok) throw new Error("eBay search failed: " + res.status);
     const j = await res.json();
-    return (j.itemSummaries || []).slice(0, 6).map((it) => ({
+    return (j.itemSummaries || []).slice(0, EXT_LIMIT).map((it) => ({
       title: it.title,
       price: it.price ? (it.price.value + " " + it.price.currency) : null,
       image: it.image ? it.image.imageUrl : null,
@@ -327,7 +329,7 @@ async function searchDomain({ listingType, suburb, state, maxPrice }) {
   const body = {
     listingType: listingType === "Rent" ? "Rent" : "Sale",
     locations: [loc],
-    pageSize: 6,
+    pageSize: EXT_LIMIT,
   };
   if (maxPrice) body.maxPrice = maxPrice;
   const res = await fetch("https://api.domain.com.au/v1/listings/residential/_search", {
@@ -339,7 +341,7 @@ async function searchDomain({ listingType, suburb, state, maxPrice }) {
   const rows = await res.json();
   return (Array.isArray(rows) ? rows : [])
     .filter((r) => r && r.listing)
-    .slice(0, 6)
+    .slice(0, EXT_LIMIT)
     .map((r) => {
       const l = r.listing, pd = l.propertyDetails || {}, media = l.media || [];
       return {
@@ -370,14 +372,14 @@ function stripTags(s) {
   return String(s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "’").replace(/&nbsp;/g, " ").trim();
 }
 async function searchJobsJobicy(query) {
-  const qs = new URLSearchParams({ geo: "australia", count: "20" });
+  const qs = new URLSearchParams({ geo: "australia", count: String(EXT_LIMIT * 2) });
   if (query) qs.set("tag", query);
   const res = await fetch("https://jobicy.com/api/v2/remote-jobs?" + qs.toString(), {
     headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) throw new Error("Jobicy failed: " + res.status);
   const j = await res.json();
-  return (j.jobs || []).slice(0, 6).map((r) => ({
+  return (j.jobs || []).slice(0, EXT_LIMIT).map((r) => ({
     title: stripTags(r.jobTitle) || "Job listing",
     company: stripTags(r.companyName) || null,
     location: stripTags(r.jobGeo) || "Remote",
@@ -392,15 +394,19 @@ async function searchJobsAdzuna({ query, where }) {
   const qs = new URLSearchParams({
     app_id: ADZUNA_APP_ID,
     app_key: ADZUNA_APP_KEY,
-    results_per_page: "6",
+    results_per_page: String(EXT_LIMIT),
     content_type: "application/json",
   });
   if (query) qs.set("what", query);
   if (where) qs.set("where", where);
   const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString(), { signal: AbortSignal.timeout(12000) });
-  if (!res.ok) throw new Error("Adzuna search failed: " + res.status);
+  if (!res.ok) {
+    // body often names the cause (bad key, plan limit); never log the query string, it carries the key
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    throw new Error("Adzuna " + res.status + " " + detail);
+  }
   const j = await res.json();
-  return (j.results || []).slice(0, 6).map((r) => ({
+  return (j.results || []).slice(0, EXT_LIMIT).map((r) => ({
     title: stripTags(r.title) || "Job listing",
     company: (r.company && r.company.display_name) || null,
     location: (r.location && r.location.display_name) || null,
@@ -416,7 +422,10 @@ async function searchJobs({ query, where }) {
     try {
       const local = await searchJobsAdzuna({ query, where });
       if (local.length) return local;
-    } catch { /* fall through to the keyless source */ }
+      console.warn("Adzuna returned 0 results for where=" + JSON.stringify(where) + " — falling back to Jobicy.");
+    } catch (e) {
+      console.warn("Adzuna call failed, falling back to Jobicy:", e.message);
+    }
   }
   return searchJobsJobicy(query);
 }
@@ -491,11 +500,11 @@ async function searchServicesOSM(place, query) {
   for (const r of rows) (byKind[r.kind] = byKind[r.kind] || []).push(r);
   const queues = Object.values(byKind);
   const out = [];
-  while (out.length < 6 && queues.some((qq) => qq.length)) {
+  while (out.length < EXT_LIMIT && queues.some((qq) => qq.length)) {
     for (const qq of queues) {
       if (!qq.length) continue;
       out.push(qq.shift());
-      if (out.length === 6) break;
+      if (out.length === EXT_LIMIT) break;
     }
   }
   return out;
@@ -510,13 +519,13 @@ async function searchServicesPlaces(place, query) {
     },
     body: JSON.stringify({
       textQuery: (query || "trades and home services") + " in " + place,
-      maxResultCount: 6,
+      maxResultCount: 20,
       regionCode: "AU",
     }),
   });
   if (!res.ok) throw new Error("Places failed: " + res.status);
   const j = await res.json();
-  return (j.places || []).slice(0, 6).map((p) => ({
+  return (j.places || []).slice(0, EXT_LIMIT).map((p) => ({
     title: (p.displayName && p.displayName.text) || "Local business",
     kind: (p.primaryTypeDisplayName && p.primaryTypeDisplayName.text) || null,
     where: p.formattedAddress || null,
