@@ -308,7 +308,7 @@ var googleClientId=null, ebayEnabled=false, domainEnabled=false, ebayResults=nul
    eBay AU listings (images/prices) through our API proxy; categories whose big AU
    players offer no public API (Carsales, realestate.com.au, Seek…) get branded
    source tiles instead — never a fake scrape. */
-var EXT_SEEDS={furniture:"furniture",electronics:"electronics",clothing:"clothes",family:"baby kids",entertainment:"movies games",books:"books",kitchen:"kitchen appliances",toys:"toys games",garden:"garden outdoor",sports:"sporting goods",pets:"pet supplies",homegoods:"home decor",homeimprove:"power tools",music:"musical instruments",office:"office supplies",hobbies:"craft hobby",other:"secondhand"};
+var EXT_SEEDS={vehicles:"car",furniture:"furniture",electronics:"electronics",clothing:"clothes",family:"baby kids",entertainment:"movies games",books:"books",kitchen:"kitchen appliances",toys:"toys games",garden:"garden outdoor",sports:"sporting goods",pets:"pet supplies",homegoods:"home decor",homeimprove:"power tools",music:"musical instruments",office:"office supplies",hobbies:"craft hobby",other:"secondhand"};
 var EXT_LINK_SITES={
   vehicles:[["Carsales","https://www.carsales.com.au"],["Gumtree Cars","https://www.gumtree.com.au/s-cars-vans-utes/c18320"],["Marketplace","https://www.facebook.com/marketplace/category/vehicles"]],
   property_rent:[["realestate.com.au","https://www.realestate.com.au/rent"],["Domain","https://www.domain.com.au/rent"]],
@@ -346,28 +346,32 @@ function loadExternal(cat,q,force){
     });
     return;
   }
-  if(cat&&EXT_LINK_SITES[cat]){extResults={mode:"links",cat:cat};extLoading=false;extKey=null;return;}
+  /* Only categories with nothing fetchable fall straight through to source links */
+  if(cat&&EXT_LINK_SITES[cat]&&!EXT_SEEDS[cat]){extResults={mode:"links",cat:cat};extLoading=false;extKey=null;return;}
   var query=extQueryFor(cat,q);
   if(!query||!ebayEnabled){extResults=null;extLoading=false;extKey=null;return;}
-  var key=query.toLowerCase();
+  var key=(cat||"")+":"+query.toLowerCase();
   if(!force&&extKey===key)return;
   extKey=key;
-  if(extCache[key]){extResults={mode:"results",q:query,items:extCache[key]};extLoading=false;return;}
+  if(extCache[key]){extResults={mode:"results",q:query,cat:cat,items:extCache[key]};extLoading=false;return;}
   extLoading=true;extResults=null;
-  api("/search/ebay?q="+encodeURIComponent(query)).then(function(j){
+  api("/search/ebay?q="+encodeURIComponent(query)+(cat?"&cat="+encodeURIComponent(cat):"")).then(function(j){
     if(extKey!==key)return;
     extCache[key]=j.results||[];
-    extLoading=false;extResults={mode:"results",q:query,items:extCache[key]};
+    extLoading=false;extResults={mode:"results",q:query,cat:cat,items:extCache[key]};
     repaintExternal();
   }).catch(function(e){
     if(extKey!==key)return;
-    extLoading=false;extResults={mode:"error",error:e.message};
+    extLoading=false;extResults={mode:"error",error:e.message,cat:cat};
     repaintExternal();
   });
 }
 function repaintExternal(){
   var box=document.getElementById("extPanel");
   if(box)box.outerHTML=externalPanelHtml();
+  /* the empty state shrinks once real web results exist, so redraw it too */
+  var fl=document.getElementById("feedList");
+  if(fl&&!feedItems().length)fl.innerHTML=feedListHtml();
   initScrollAnim();
   var nb=document.getElementById("extPanel");
   if(nb)nb.querySelectorAll(".reveal").forEach(function(el){el.classList.add("in");});
@@ -805,7 +809,14 @@ function filterPanelHtml(){
 }
 function feedListHtml(){
   var act=feedItems();
-  return act.length?act.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.all+'</span>'+(searchQ?'Nothing matches "'+esc(searchQ)+'" on '+APP+' — try the links below.':(feedScope==="suburb"?'Nothing in '+esc(me.suburb)+' yet — try All Australia, or share the app link!':'Nothing here yet — share the app link so people can post!'))+'</div>';
+  if(act.length)return act.map(function(it,i){return card(it,i);}).join("");
+  /* If the web panel below is about to fill the screen with real listings, the
+     big empty state is just a hole between the filters and the goods. */
+  var webComing=extLoading||(extResults&&((extResults.items&&extResults.items.length)||extResults.mode==="links"));
+  var msg=searchQ?'Nothing matches "'+esc(searchQ)+'" on '+APP+' yet':
+          (feedScope==="suburb"?'Nothing in '+esc(me.suburb)+' yet — try All Australia':'Nothing posted here yet');
+  if(webComing)return '<div class="emptyslim reveal">'+msg+' — here\'s what\'s live elsewhere:</div>';
+  return '<div class="empty reveal"><span class="big">'+ICONS.all+'</span>'+msg+(searchQ?' — try the links below.':', or share the app link!')+'</div>';
 }
 function viewFeed(){
   var demo=dbMode==="demo"?'<div class="note demo-warn reveal">Heads up — pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
@@ -882,7 +893,13 @@ function externalPanelHtml(){
           '<span class="esrc">eBay AU</span>'+
         '</a>';
       }).join("")+'</div>'+
-      '<a class="pill gh sm" style="display:inline-block;margin-top:10px;text-decoration:none" href="https://www.ebay.com.au/sch/i.html?_nkw='+encodeURIComponent(extResults.q)+'" target="_blank" rel="noopener">More on eBay AU <span class="ic-inline">'+ICONS.external+'</span></a>';
+      '<div class="ddelsewhere" style="padding:10px 0 0">'+
+        '<a class="pill gh sm" style="text-decoration:none" href="https://www.ebay.com.au/sch/i.html?_nkw='+encodeURIComponent(extResults.q)+'" target="_blank" rel="noopener">More on eBay AU <span class="ic-inline">'+ICONS.external+'</span></a>'+
+        /* categories that also have big AU sites with no public feed keep their links here */
+        (EXT_LINK_SITES[extResults.cat]||[]).map(function(s){
+          return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
+        }).join("")+
+      '</div>';
     }
   }else{
     return '<div id="extPanel"></div>';

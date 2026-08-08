@@ -266,21 +266,34 @@ async function getEbayToken() {
   ebayTokenExpAt = now() + (j.expires_in || 7200) * 1000;
   return ebayTokenCache;
 }
-async function searchEbay(query) {
+/* eBay AU top-level categories, so a "vehicles" search returns whole cars and
+   bikes rather than a page of wing mirrors. Unknown/empty scopes fall back to a
+   plain keyword search, so a wrong id can never produce a dead panel. */
+const EBAY_CATS = { vehicles: "9800" };
+async function searchEbay(query, categoryIds) {
   const token = await getEbayToken();
-  const url = "https://api.ebay.com/buy/browse/v1/item_summary/search?q=" + encodeURIComponent(query) + "&limit=6&filter=" + encodeURIComponent("itemLocationCountry:AU");
-  const res = await fetch(url, {
-    headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_AU" },
-  });
-  if (!res.ok) throw new Error("eBay search failed: " + res.status);
-  const j = await res.json();
-  return (j.itemSummaries || []).slice(0, 6).map((it) => ({
-    title: it.title,
-    price: it.price ? (it.price.value + " " + it.price.currency) : null,
-    image: it.image ? it.image.imageUrl : null,
-    url: it.itemWebUrl,
-    condition: it.condition || null,
-  }));
+  const base = "https://api.ebay.com/buy/browse/v1/item_summary/search?q=" + encodeURIComponent(query) + "&limit=6&filter=" + encodeURIComponent("itemLocationCountry:AU");
+  const run = async (url) => {
+    const res = await fetch(url, {
+      headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_AU" },
+    });
+    if (!res.ok) throw new Error("eBay search failed: " + res.status);
+    const j = await res.json();
+    return (j.itemSummaries || []).slice(0, 6).map((it) => ({
+      title: it.title,
+      price: it.price ? (it.price.value + " " + it.price.currency) : null,
+      image: it.image ? it.image.imageUrl : null,
+      url: it.itemWebUrl,
+      condition: it.condition || null,
+    }));
+  };
+  if (categoryIds) {
+    try {
+      const scoped = await run(base + "&category_ids=" + encodeURIComponent(categoryIds));
+      if (scoped.length) return scoped;
+    } catch { /* category filter unsupported or empty — fall back below */ }
+  }
+  return run(base);
 }
 
 /* ---------------- Domain.com.au Listings API (real in-app property results) ----------------
@@ -547,7 +560,7 @@ module.exports = async function handler(req, res) {
       const q = String(url.searchParams.get("q") || "").trim().slice(0, 80);
       if (!q) return send(res, 400, { error: "Search for something first." });
       try {
-        const results = await searchEbay(q);
+        const results = await searchEbay(q, EBAY_CATS[url.searchParams.get("cat")] || null);
         return send(res, 200, { results });
       } catch {
         return send(res, 502, { error: "Couldn't reach eBay — try again." });
