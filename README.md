@@ -4,7 +4,7 @@
 
 An Australian marketplace that unifies things normally scattered across five different apps — secondhand goods, free kerbside finds, vehicles, rentals, jobs and services — into a single feed.
 
-**Live:** https://kerbside-kappa.vercel.app
+**Live:** https://dibs-au.vercel.app
 
 ---
 

@@ -445,7 +445,7 @@ module.exports = async function handler(req, res) {
       const vt = process.env.EBAY_VERIFICATION_TOKEN || "";
       if (method === "GET") {
         const cc = url.searchParams.get("challenge_code") || "";
-        const endpoint = (process.env.PUBLIC_BASE_URL || "https://kerbside-kappa.vercel.app") + "/api/ebay-notifications";
+        const endpoint = (process.env.PUBLIC_BASE_URL || "https://dibs-au.vercel.app") + "/api/ebay-notifications";
         const hash = crypto.createHash("sha256").update(cc + vt + endpoint).digest("hex");
         return send(res, 200, { challengeResponse: hash });
       }
