@@ -1133,6 +1133,11 @@ function externalPanelHtml(){
       '</div>';
     }
   }else{
+    /* No listings to show, but the ABS price bar is independent of them — it
+       shouldn't disappear just because a source is unkeyed or returned nothing. */
+    var soloIdx=priceIndexHtml(catFilter);
+    if(soloIdx)return '<div id="extPanel"><h2 class="st reveal">Market snapshot</h2><div class="psearch reveal">'+soloIdx+
+      '<p class="hint" style="margin:0">New-price movement from the ABS Consumer Price Index — secondhand prices track their own course.</p></div></div>';
     return '<div id="extPanel"></div>';
   }
   return '<div id="extPanel"><h2 class="st reveal">From the web</h2><div class="psearch reveal">'+inner+
