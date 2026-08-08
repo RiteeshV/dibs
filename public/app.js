@@ -388,6 +388,7 @@ function loadExternal(cat,q,force){
   }
   /* Jobs: real ads from Adzuna's AU index when a free key is configured */
   if(cat==="jobs"){
+    loadJobInsight();
     var jq=(q||"").trim();
     var jKey="jobs:"+feedScope+":"+jq.toLowerCase();
     if(!force&&extKey===jKey)return;
@@ -480,6 +481,73 @@ function startPolling(){
       notifs=j.notifications;unread=j.unread;paintBadge();
     }).catch(function(){});
   },25000);
+}
+/* ---------- jobs: insight strip + career guides ---------- */
+var jobInsight=null, jobInsightKey=null;
+function initialsFor(s){
+  var w=String(s||"").replace(/[^A-Za-z0-9 ]/g," ").trim().split(/\s+/);
+  return ((w[0]||"?")[0]+(w[1]?w[1][0]:"")).toUpperCase();
+}
+function agoFrom(iso){
+  var t=Date.parse(iso); if(isNaN(t))return "";
+  var d=Math.floor((Date.now()-t)/86400000);
+  if(d<=0)return "today"; if(d===1)return "yesterday";
+  if(d<7)return d+"d ago"; if(d<31)return Math.floor(d/7)+"w ago";
+  return Math.floor(d/30)+"mo ago";
+}
+function loadJobInsight(){
+  var k="jv:"+feedScope;
+  if(jobInsightKey===k)return;
+  jobInsightKey=k;
+  api("/search/job-insights?scope="+(feedScope==="all"?"all":"state")).then(function(j){
+    if(jobInsightKey!==k)return;
+    jobInsight=j.insight||null;
+    if(jobInsight)repaintExternal();
+  }).catch(function(){});
+}
+function jobInsightHtml(){
+  if(!jobInsight)return "";
+  var i=jobInsight, dir=i.change==null?"":(i.change>0?"up":i.change<0?"down":"");
+  return '<div class="jvbar">'+
+    '<span class="jvn">'+i.vacancies.toLocaleString()+'</span>'+
+    '<span class="jvl">job vacancies in '+esc(i.region)+
+      (i.change!=null?' <b class="'+dir+'">'+(i.change>0?"▲":i.change<0?"▼":"")+' '+Math.abs(i.change).toFixed(1)+'%</b> on last quarter':'')+
+      ' — ABS, '+esc(i.period)+'</span>'+
+  '</div>';
+}
+/* Curated links to the authoritative Australian sources, not invented articles —
+   pay rates, tax file numbers and job-seeker support all live on .gov.au. */
+var JOB_GUIDES=[
+  ["Check the award rate for your job","Fair Work's calculator gives the legal minimum pay, penalty rates and overtime for your role.","https://calculate.fairwork.gov.au/"],
+  ["Your rights at work","What every employee in Australia is entitled to — leave, breaks, notice and unfair dismissal.","https://www.fairwork.gov.au/employment-conditions/national-employment-standards"],
+  ["Apply for a Tax File Number","You'll need a TFN before your first pay, or you'll be taxed at the top rate.","https://www.ato.gov.au/individuals-and-families/tax-file-number/apply-for-a-tfn"],
+  ["Working holiday & visa work rights","Check what your visa allows before you accept a role.","https://immi.homeaffairs.gov.au/visas/working-in-australia"],
+  ["Help while you look for work","JobSeeker payment eligibility and employment services through Services Australia.","https://www.servicesaustralia.gov.au/jobseeker-payment"],
+];
+function jobGuidesHtml(){
+  return '<div class="jguides">'+
+    '<div class="jgh">Before you apply</div>'+
+    JOB_GUIDES.map(function(g){
+      return '<a class="jguide" href="'+esc(g[2])+'" target="_blank" rel="noopener">'+
+        '<span class="jgt">'+esc(g[0])+' <span class="ic-inline">'+ICONS.external+'</span></span>'+
+        '<span class="jgd">'+esc(g[1])+'</span>'+
+      '</a>';
+    }).join("")+
+    '<p class="hint" style="margin:8px 0 0">Official Australian government sources — Dibs just points you at them.</p>'+
+  '</div>';
+}
+
+/* render() rebuilds the strip, so the chosen tile can end up scrolled off to one
+   side — especially for categories late in the list. Bring it back into view. */
+function scrollCatIntoView(id){
+  requestAnimationFrame(function(){
+    var el=document.querySelector('[data-act="catf"][data-id="'+id+'"]');
+    if(!el||!el.parentElement)return;
+    var strip=el.parentElement;
+    if(strip.scrollWidth<=strip.clientWidth)return;
+    var target=el.offsetLeft-(strip.clientWidth/2)+(el.offsetWidth/2);
+    strip.scrollTo({left:Math.max(0,target),behavior:"smooth"});
+  });
 }
 function paintBadge(){document.querySelectorAll(".js-badge").forEach(function(b){b.style.display=unread?"":"none";b.textContent=unread;});}
 
@@ -985,19 +1053,31 @@ function externalPanelHtml(){
       inner='<p class="hint" style="margin:0">No job ads '+jwhere+' right now — try All Australia or a different keyword.</p>';
     }else{
       var jremote=extResults.items[0].remote;
-      inner='<p class="hint" style="margin:0 0 10px">'+(jremote
+      inner=jobInsightHtml()+
+      '<p class="hint" style="margin:0 0 10px">'+(jremote
         ?'Remote roles open to Australia, via '+esc(extResults.items[0].source)+'.'
         :'Live job ads '+jwhere+'.')+'</p>'+
       '<div class="jobrow">'+extResults.items.map(function(it){
-        var meta=[it.company,it.location].filter(Boolean).join(" · ");
-        var tags=[it.salary,it.contract].filter(Boolean);
+        var tags=[it.salary,it.contract,it.remote?"Remote":null].filter(Boolean);
         return '<a class="jobcard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
-          '<div class="jt">'+esc(it.title)+'</div>'+
-          (meta?'<div class="jm">'+esc(meta)+'</div>':'')+
+          '<div class="jhead">'+
+            '<span class="jlogo">'+(it.logo
+              ?'<img src="'+esc(it.logo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">'
+              :'<span class="jinit">'+esc(initialsFor(it.company||it.title))+'</span>')+'</span>'+
+            '<span class="jheadtxt">'+
+              '<span class="jt">'+esc(it.title)+'</span>'+
+              (it.company?'<span class="jco">'+esc(it.company)+'</span>':'')+
+            '</span>'+
+          '</div>'+
+          (it.location?'<div class="jm"><span class="ic-inline">'+ICONS.locate+'</span> '+esc(it.location)+'</div>':'')+
           (tags.length?'<div class="jtags">'+tags.map(function(t){return '<span class="jtag">'+esc(t)+'</span>';}).join("")+'</div>':'')+
-          '<span class="esrc">'+esc(it.source||"Adzuna")+'</span>'+
+          '<div class="jfoot">'+
+            '<span class="esrc">'+esc(it.source||"Adzuna")+(it.posted?' · '+esc(agoFrom(it.posted)):'')+'</span>'+
+            '<span class="jgo">View role <span class="ic-inline">'+ICONS.external+'</span></span>'+
+          '</div>'+
         '</a>';
       }).join("")+'</div>'+
+      jobGuidesHtml()+
       '<div class="ddelsewhere" style="padding:10px 0 0">'+(EXT_LINK_SITES.jobs||[]).map(function(s){
         return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
       }).join("")+'</div>';
@@ -1375,7 +1455,7 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
-  if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";loadExternal(id,searchQ);render();return;}
+  if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";loadExternal(id,searchQ);render();scrollCatIntoView(id);return;}
   if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
   if(action==="clearfilters"){filterMin="";filterMax="";filterKeyword="";render();return;}
   if(action==="herogo"){

@@ -268,11 +268,36 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .emptyslim{grid-column:1/-1;padding:6px 2px 2px;color:var(--faint);font-size:12.5px;font-weight:600}
 /* job ads have no images, so they get their own text-led card instead of .ebaycard */
 .jobrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-.jobcard{position:relative;display:block;border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--card2);text-decoration:none;transition:border-color .18s,transform .18s,box-shadow .18s}
-.jobcard .esrc{padding:9px 0 0}
-.jobcard:hover{border-color:var(--teal);transform:translateY(-2px);box-shadow:var(--shadow)}
-.jobcard .jt{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.3}
-.jobcard .jm{font-size:11.5px;color:var(--soft);margin-top:5px;line-height:1.35}
+.jobcard{position:relative;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--card);text-decoration:none;transition:border-color .18s,transform .18s,box-shadow .18s}
+.jobcard:hover{border-color:var(--teal);transform:translateY(-2px);box-shadow:var(--shadow-lift)}
+.jhead{display:flex;gap:11px;align-items:flex-start}
+.jlogo{flex-shrink:0;width:38px;height:38px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--card2);display:flex;align-items:center;justify-content:center}
+.jlogo img{width:100%;height:100%;object-fit:contain}
+.jinit{font-size:13px;font-weight:800;color:var(--teal);letter-spacing:.5px}
+.jheadtxt{min-width:0;display:flex;flex-direction:column;gap:2px}
+.jobcard .jt{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.32}
+.jobcard .jco{font-size:11.5px;font-weight:600;color:var(--soft)}
+.jobcard .jm{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--faint);margin-top:9px}
+.jobcard .jm .ic-inline svg{width:12px;height:12px}
+.jfoot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto;padding-top:11px}
+.jobcard .esrc{padding:0}
+.jgo{font-size:11px;font-weight:800;color:var(--teal);white-space:nowrap;display:flex;align-items:center;gap:4px}
+.jgo .ic-inline svg{width:11px;height:11px}
+/* ABS job-vacancy figure above the listings */
+.jvbar{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;padding:11px 13px;margin:0 0 12px;border:1px solid var(--line);border-radius:13px;background:var(--card2)}
+.jvn{font-family:'Anton',sans-serif;font-size:23px;letter-spacing:.5px;color:var(--ink)}
+.jvl{font-size:11.5px;color:var(--soft);line-height:1.4}
+.jvl b{font-weight:800}
+.jvl b.up{color:var(--teal)}
+.jvl b.down{color:var(--amber)}
+/* career guides */
+.jguides{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.jgh{font-family:'Anton',sans-serif;font-size:14px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink);margin-bottom:10px}
+.jguide{display:block;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card2);text-decoration:none;margin-bottom:7px;transition:border-color .16s,transform .16s}
+.jguide:hover{border-color:var(--teal);transform:translateX(2px)}
+.jgt{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:var(--ink)}
+.jgt .ic-inline svg{width:11px;height:11px;color:var(--faint)}
+.jgd{display:block;font-size:11.5px;color:var(--soft);margin-top:3px;line-height:1.45}
 .jtags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
 .jtag{font-size:10.5px;font-weight:700;color:var(--teal);background:var(--tealglow);border-radius:999px;padding:3px 8px;text-transform:capitalize}
 /* ABS property medians — figures, not listings, so they get a stat card */

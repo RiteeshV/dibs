@@ -386,6 +386,8 @@ async function searchJobsJobicy(query) {
     location: stripTags(r.jobGeo) || "Remote",
     salary: null,
     contract: Array.isArray(r.jobType) ? stripTags(r.jobType[0]).toLowerCase() : null,
+    logo: r.companyLogo || null,
+    posted: r.pubDate || null,
     url: r.url || "https://jobicy.com",
     source: "Jobicy",
     remote: true,
@@ -416,6 +418,8 @@ async function searchJobsAdzuna({ query, where }) {
     location: (r.location && r.location.display_name) || null,
     salary: jobSalary(r.salary_min, r.salary_max),
     contract: r.contract_time ? String(r.contract_time).replace(/_/g, " ") : null,
+    logo: null,
+    posted: r.created || null,
     url: r.redirect_url || "https://www.adzuna.com.au",
     source: "Adzuna",
     remote: false,
@@ -438,6 +442,8 @@ async function searchJobsJooble({ query, where }) {
     location: stripTags(r.location) || null,
     salary: stripTags(r.salary) || null,
     contract: stripTags(r.type).toLowerCase() || null,
+    logo: null,
+    posted: r.updated || null,
     url: r.link || "https://jooble.org",
     source: "Jooble",
     remote: false,
@@ -630,6 +636,41 @@ async function searchPropertyStats(region) {
     region: ABS_REGION_LABEL[region] || region,
     period: nowQ,
     rows: [row("3", "1", "Houses"), row("4", "2", "Units & apartments")].filter(Boolean),
+  };
+}
+
+/* Job-market insight — ABS Job Vacancies (JV). Published in thousands, and only
+   "All Industries" carries a state breakdown, so we report the state total and
+   its quarter-on-quarter move. TSEST 10 (Original) is the series with data;
+   seasonally adjusted returns nothing at this level. */
+const ABS_STATE = { NSW: "1", VIC: "2", QLD: "3", SA: "4", WA: "5", TAS: "6", NT: "7", ACT: "8" };
+const ABS_STATE_LABEL = { NSW: "NSW", VIC: "Victoria", QLD: "Queensland", SA: "South Australia", WA: "Western Australia", TAS: "Tasmania", NT: "the NT", ACT: "the ACT", AUS: "Australia" };
+async function jobVacancies(stateCode) {
+  const url = "https://data.api.abs.gov.au/rest/data/ABS,JV/M1.7.TOT.10." + stateCode +
+    ".Q?lastNObservations=2&dimensionAtObservation=AllDimensions";
+  const res = await fetch(url, { headers: { Accept: "application/vnd.sdmx.data+json", "User-Agent": UA }, signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error("ABS JV failed: " + res.status);
+  const j = await res.json();
+  const st = j.data && j.data.structures && j.data.structures[0];
+  if (!st) return null;
+  const dims = st.dimensions.observation;
+  const order = dims.map((d) => d.id);
+  const vals = {};
+  dims.forEach((d) => { vals[d.id] = d.values; });
+  const byPeriod = {};
+  for (const [k, v] of Object.entries(j.data.dataSets[0].observations || {})) {
+    const p = k.split(":").map(Number);
+    const at = {};
+    order.forEach((id, i) => { at[id] = vals[id][p[i]]; });
+    byPeriod[at.TIME_PERIOD.id] = v[0];
+  }
+  const periods = Object.keys(byPeriod).sort().reverse();
+  if (!periods.length) return null;
+  const cur = byPeriod[periods[0]], prev = periods[1] != null ? byPeriod[periods[1]] : null;
+  return {
+    vacancies: Math.round(cur * 1000),
+    change: prev ? Math.round(((cur - prev) / prev) * 1000) / 10 : null,
+    period: periods[0],
   };
 }
 
@@ -860,6 +901,17 @@ module.exports = async function handler(req, res) {
         return send(res, 200, { results: await searchJobs({ query: q, where }) });
       } catch {
         return send(res, 502, { error: "Couldn't reach the job feed — try again." });
+      }
+    }
+
+    if (path === "/search/job-insights" && method === "GET") {
+      const all = url.searchParams.get("scope") === "all";
+      const code = all ? "AUS" : (ABS_STATE[me.state] || "AUS");
+      try {
+        const jv = await jobVacancies(code);
+        return send(res, 200, { insight: jv ? { ...jv, region: ABS_STATE_LABEL[all ? "AUS" : me.state] || "Australia" } : null });
+      } catch {
+        return send(res, 200, { insight: null }); // an insight strip is a nicety; never fail the panel for it
       }
     }
 
