@@ -21,7 +21,8 @@ Dibs puts a clock on that. You post an item; neighbours can claim it; if nobody 
 **Google Sign-In verified from scratch.** Rather than pulling in `google-auth-library`, ID tokens are verified manually: fetch Google's JWKS, match the key by `kid`, rebuild the RSA public key with `crypto.createPublicKey({ format: "jwk" })`, and verify the RS256 signature — then check `aud`, `iss`, `exp` and `email_verified`. Roughly 30 lines in `api/index.js`.
 
 **Live external listings.** Category selection triggers an inline "From the web" panel:
-- **eBay AU** — OAuth2 client-credentials against the Browse API, returning real listings with images and prices. Includes the Marketplace Account Deletion notification endpoint eBay requires before a production keyset is enabled (SHA-256 challenge–response).
+- **eBay AU** — OAuth2 client-credentials against the Browse API, returning real listings with images and prices, optionally scoped to a marketplace category so a vehicle search returns cars rather than car parts. Includes the Marketplace Account Deletion notification endpoint eBay requires before a production keyset is enabled (SHA-256 challenge–response).
+- **Adzuna** — Australian job ads, suburb- or nationwide-scoped, rendered as text-led cards with salary and contract type.
 - **Domain.com.au** — a complete Listings API integration (OAuth2, cached tokens, suburb/state-scoped residential search). Access is gated behind a commercial agreement, so it ships **disabled and degrades gracefully** to branded source links rather than erroring. See "Honest status" below.
 
 **Graceful degradation as a design rule.** Every external integration is feature-flagged off a `/config` endpoint. Missing credentials never surface as an error to the user — the UI falls back to a different, still-useful state.
@@ -63,6 +64,8 @@ EBAY_CLIENT_SECRET
 EBAY_VERIFICATION_TOKEN
 DOMAIN_CLIENT_ID          # enables inline Domain property results
 DOMAIN_CLIENT_SECRET
+ADZUNA_APP_ID             # enables inline job listings
+ADZUNA_APP_KEY
 ```
 
 ## Honest status
@@ -71,6 +74,7 @@ This is a portfolio project, and it's worth being straight about what is and isn
 
 - **eBay integration is fully working in production** — real listings, verified end-to-end.
 - **Domain integration is complete but inactive.** The code, OAuth flow and rendering all work and are deployed; credentials authenticate successfully (`200` on token). The Agents & Listings package requires a registered business and a commercial agreement with Domain, so the search endpoint returns `403` and the app falls back to source links. It's kept in the codebase deliberately — handling an unavailable dependency cleanly is part of the design.
+- **Job listings are built and ship disabled**, pending a free Adzuna developer key. Unlike Domain, that key needs no business registration, so this one is a signup away.
 - **realestate.com.au, Carsales and Seek** are intentionally *not* scraped. None expose a public listings API, and scraping them would breach their terms and break constantly. They appear as clearly-labelled outbound links instead.
 - Payments are not implemented; priced handoffs generate a receipt record only.
 

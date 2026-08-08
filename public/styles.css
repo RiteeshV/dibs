@@ -245,17 +245,18 @@ html[data-theme="dark"] .newchip{background:#F2F3F5;color:#101215}
 .cfoot{padding:8px 12px 12px;display:flex;align-items:center;gap:6px}
 .cfoot .stubtxt{flex:1;min-width:0;font-size:10px;color:var(--soft);line-height:1.35}
 .cfoot .stubtxt .num{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink)}
-button.pill{font-size:12.5px;font-weight:800;padding:10px 16px;border-radius:11px;border:1.5px solid var(--line2);background:var(--card);color:var(--ink);cursor:pointer;transition:transform .16s,box-shadow .16s,background .16s,border-color .16s;white-space:nowrap}
-button.pill:hover{transform:translate(-1px,-2px);box-shadow:3px 4px 0 var(--line2);border-color:var(--ink)}
-button.pill:active{transform:translate(0,0) scale(.97);box-shadow:none}
-button.pill.pri{background:var(--teal);color:#fff;border:1.5px solid var(--teald);position:relative;overflow:hidden}
-button.pill.pri:hover{box-shadow:3px 4px 0 var(--tealglow);border-color:var(--teald)}
-button.pill.pri::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(120deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-20deg);transition:left .5s ease}
-button.pill.pri:hover::after{left:130%}
-button.pill.dgr{background:var(--red);color:#fff;border:none}
-button.pill.gh{color:var(--soft)}
-button.pill.sm{padding:7px 12px;font-size:11px}
-button.pill.block{width:100%;text-align:center}
+/* applies to <a> as well as <button> — "More on eBay AU"-style links use it */
+.pill{display:inline-block;text-decoration:none;font-family:inherit;font-size:12.5px;font-weight:800;padding:10px 16px;border-radius:11px;border:1.5px solid var(--line2);background:var(--card);color:var(--ink);cursor:pointer;transition:transform .16s,box-shadow .16s,background .16s,border-color .16s;white-space:nowrap}
+.pill:hover{transform:translate(-1px,-2px);box-shadow:3px 4px 0 var(--line2);border-color:var(--ink)}
+.pill:active{transform:translate(0,0) scale(.97);box-shadow:none}
+.pill.pri{background:var(--teal);color:#fff;border:1.5px solid var(--teald);position:relative;overflow:hidden}
+.pill.pri:hover{box-shadow:3px 4px 0 var(--tealglow);border-color:var(--teald)}
+.pill.pri::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(120deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-20deg);transition:left .5s ease}
+.pill.pri:hover::after{left:130%}
+.pill.dgr{background:var(--red);color:#fff;border:none}
+.pill.gh{color:var(--soft)}
+.pill.sm{padding:7px 12px;font-size:11px}
+.pill.block{width:100%;text-align:center}
 button.iconlink{border:1px solid var(--line);background:var(--card2);color:var(--soft);border-radius:999px;width:34px;height:34px;font-size:14px;cursor:pointer;flex-shrink:0;transition:all .16s;display:inline-flex;align-items:center;justify-content:center}
 button.iconlink svg{width:16px;height:16px}
 button.iconlink:hover{color:var(--teal);border-color:var(--teal);transform:translateY(-2px)}
@@ -265,6 +266,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .empty .big{font-size:40px;display:block;margin-bottom:12px}
 .empty .big svg{width:40px;height:40px}
 .emptyslim{grid-column:1/-1;padding:6px 2px 2px;color:var(--faint);font-size:12.5px;font-weight:600}
+/* job ads have no images, so they get their own text-led card instead of .ebaycard */
+.jobrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.jobcard{position:relative;display:block;border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--card2);text-decoration:none;transition:border-color .18s,transform .18s,box-shadow .18s}
+.jobcard .esrc{padding:9px 0 0}
+.jobcard:hover{border-color:var(--teal);transform:translateY(-2px);box-shadow:var(--shadow)}
+.jobcard .jt{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.3}
+.jobcard .jm{font-size:11.5px;color:var(--soft);margin-top:5px;line-height:1.35}
+.jtags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.jtag{font-size:10.5px;font-weight:700;color:var(--teal);background:var(--tealglow);border-radius:999px;padding:3px 8px;text-transform:capitalize}
 .comparebar{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 8px 8px 16px;box-shadow:var(--shadow-lift);z-index:40;font-size:12.5px;font-weight:600;color:var(--soft)}
 @media(min-width:940px){.comparebar{bottom:26px}}
 .comparegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px}

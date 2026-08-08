@@ -22,6 +22,9 @@ const HAS_EBAY = !!(EBAY_CLIENT_ID && EBAY_CLIENT_SECRET);
 const DOMAIN_CLIENT_ID = process.env.DOMAIN_CLIENT_ID || "";
 const DOMAIN_CLIENT_SECRET = process.env.DOMAIN_CLIENT_SECRET || "";
 const HAS_DOMAIN = !!(DOMAIN_CLIENT_ID && DOMAIN_CLIENT_SECRET);
+const ADZUNA_APP_ID = process.env.ADZUNA_APP_ID || "";
+const ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY || "";
+const HAS_JOBS = !!(ADZUNA_APP_ID && ADZUNA_APP_KEY);
 
 const CLAIM_HOLD_DAYS = 2;
 const FLAGS_TO_OBSERVE = 2;
@@ -348,6 +351,37 @@ async function searchDomain({ listingType, suburb, state, maxPrice }) {
     });
 }
 
+/* Jobs — Adzuna's Australian index, which aggregates ads from job boards and
+   company sites under a free developer key. Same deal as the other sources: we
+   show the ad inline, applying happens on the original posting. */
+function jobSalary(min, max) {
+  const fmt = (n) => "$" + Math.round(n).toLocaleString("en-AU");
+  if (min && max && Math.round(min) !== Math.round(max)) return fmt(min) + " – " + fmt(max);
+  if (min || max) return fmt(min || max);
+  return null;
+}
+async function searchJobs({ query, where }) {
+  const qs = new URLSearchParams({
+    app_id: ADZUNA_APP_ID,
+    app_key: ADZUNA_APP_KEY,
+    results_per_page: "6",
+    content_type: "application/json",
+  });
+  if (query) qs.set("what", query);
+  if (where) qs.set("where", where);
+  const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString());
+  if (!res.ok) throw new Error("Adzuna search failed: " + res.status);
+  const j = await res.json();
+  return (j.results || []).slice(0, 6).map((r) => ({
+    title: r.title ? String(r.title).replace(/<[^>]*>/g, "") : "Job listing",
+    company: (r.company && r.company.display_name) || null,
+    location: (r.location && r.location.display_name) || null,
+    salary: jobSalary(r.salary_min, r.salary_max),
+    contract: r.contract_time ? String(r.contract_time).replace(/_/g, " ") : null,
+    url: r.redirect_url || "https://www.adzuna.com.au",
+  }));
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
@@ -449,7 +483,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (path === "/config" && method === "GET")
-      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY, domainEnabled: HAS_DOMAIN });
+      return send(res, 200, { googleClientId: GOOGLE_CLIENT_ID || null, ebayEnabled: HAS_EBAY, domainEnabled: HAS_DOMAIN, jobsEnabled: HAS_JOBS });
 
     // eBay Marketplace Account Deletion notifications (required to enable the keyset).
     // GET = eBay's endpoint-validation challenge; POST = deletion notices (we store no eBay
@@ -564,6 +598,18 @@ module.exports = async function handler(req, res) {
         return send(res, 200, { results });
       } catch {
         return send(res, 502, { error: "Couldn't reach eBay — try again." });
+      }
+    }
+
+    if (path === "/search/jobs" && method === "GET") {
+      if (!HAS_JOBS) return send(res, 400, { error: "Job search isn't connected yet." });
+      const q = String(url.searchParams.get("q") || "").trim().slice(0, 80);
+      // "all Australia" scope drops the suburb so the whole country is searched
+      const where = url.searchParams.get("scope") === "all" ? "" : [me.suburb, me.state].filter(Boolean).join(", ");
+      try {
+        return send(res, 200, { results: await searchJobs({ query: q, where }) });
+      } catch {
+        return send(res, 502, { error: "Couldn't reach the job feed — try again." });
       }
     }
 

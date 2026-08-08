@@ -303,7 +303,7 @@ var CAT_FILTER_EXAMPLES={
 };
 function catExamples(cat){return CAT_FILTER_EXAMPLES[cat]||null;}
 var TITLE_EXAMPLES=["Two-seater couch, minor wear","IKEA bookshelf, flat-packed","Bar fridge, works fine","Kids bike, 16 inch","Dining chairs x4","Box of moving boxes","Desk lamp, barely used","Pot plants, free to a good home"];
-var googleClientId=null, ebayEnabled=false, domainEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
+var googleClientId=null, ebayEnabled=false, domainEnabled=false, jobsEnabled=false, ebayResults=null, ebayLoading=false, leaderboard=null;
 /* "From the web" — inline external results per category. Goods categories pull real
    eBay AU listings (images/prices) through our API proxy; categories whose big AU
    players offer no public API (Carsales, realestate.com.au, Seek…) get branded
@@ -342,6 +342,26 @@ function loadExternal(cat,q,force){
     }).catch(function(e){
       if(extKey!==dKey)return;
       extLoading=false;extResults={mode:"error",error:e.message};
+      repaintExternal();
+    });
+    return;
+  }
+  /* Jobs: real ads from Adzuna's AU index when a free key is configured */
+  if(cat==="jobs"&&jobsEnabled){
+    var jq=(q||"").trim();
+    var jKey="jobs:"+feedScope+":"+jq.toLowerCase();
+    if(!force&&extKey===jKey)return;
+    extKey=jKey;
+    if(extCache[jKey]){extResults={mode:"jobs",cat:cat,items:extCache[jKey]};extLoading=false;return;}
+    extLoading=true;extResults=null;
+    api("/search/jobs?scope="+(feedScope==="all"?"all":"suburb")+(jq?"&q="+encodeURIComponent(jq):"")).then(function(j){
+      if(extKey!==jKey)return;
+      extCache[jKey]=j.results||[];
+      extLoading=false;extResults={mode:"jobs",cat:cat,items:extCache[jKey]};
+      repaintExternal();
+    }).catch(function(e){
+      if(extKey!==jKey)return;
+      extLoading=false;extResults={mode:"error",error:e.message,cat:cat};
       repaintExternal();
     });
     return;
@@ -401,7 +421,7 @@ function boot(){
   applyTheme();
   bindModalOnce();
   window.addEventListener("resize",function(){if(me)positionDockLiquid();});
-  api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;domainEnabled=!!j.domainEnabled;if(!me)render();}).catch(function(){});
+  api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;domainEnabled=!!j.domainEnabled;jobsEnabled=!!j.jobsEnabled;if(!me)render();}).catch(function(){});
   api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
 }
 function refresh(){
@@ -878,6 +898,26 @@ function externalPanelHtml(){
         '</a>';
       }).join("")+'</div>'+
       '<a class="pill gh sm" style="display:inline-block;margin-top:10px;text-decoration:none" href="https://www.domain.com.au/'+(extResults.cat==="property_rent"?"rent":"sale")+'" target="_blank" rel="noopener">More on Domain <span class="ic-inline">'+ICONS.external+'</span></a>';
+    }
+  }else if(extResults&&extResults.mode==="jobs"){
+    var jwhere=feedScope==="all"?"across Australia":("near "+esc(me.suburb));
+    if(!extResults.items.length){
+      inner='<p class="hint" style="margin:0">No job ads '+jwhere+' right now — try All Australia or a different keyword.</p>';
+    }else{
+      inner='<p class="hint" style="margin:0 0 10px">Live job ads '+jwhere+'.</p>'+
+      '<div class="jobrow">'+extResults.items.map(function(it){
+        var meta=[it.company,it.location].filter(Boolean).join(" · ");
+        var tags=[it.salary,it.contract].filter(Boolean);
+        return '<a class="jobcard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
+          '<div class="jt">'+esc(it.title)+'</div>'+
+          (meta?'<div class="jm">'+esc(meta)+'</div>':'')+
+          (tags.length?'<div class="jtags">'+tags.map(function(t){return '<span class="jtag">'+esc(t)+'</span>';}).join("")+'</div>':'')+
+          '<span class="esrc">Adzuna</span>'+
+        '</a>';
+      }).join("")+'</div>'+
+      '<div class="ddelsewhere" style="padding:10px 0 0">'+(EXT_LINK_SITES.jobs||[]).map(function(s){
+        return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
+      }).join("")+'</div>';
     }
   }else if(extResults&&extResults.mode==="error"){
     inner='<p class="hint" style="margin:0;color:var(--red)">'+esc(extResults.error)+'</p>';
