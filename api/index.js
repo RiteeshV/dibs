@@ -552,14 +552,29 @@ async function searchServicesOSM(place, query) {
     'node(' + around + ')["shop"~"^(car_repair|hairdresser|laundry|dry_cleaning|florist|shoe_repair|locksmith|computer_repair)$"];' +
     'node(' + around + ')["amenity"~"^(veterinary)$"];' +
     ");out body 120;";
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
-    body: "data=" + encodeURIComponent(ql),
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error("Overpass failed: " + res.status);
-  const j = await res.json();
+  // Overpass is a free shared service: it returns 429 when busy and 504 under
+  // load, so a single attempt against one host loses results for whole suburbs.
+  // Try the mirrors in turn before giving up.
+  const OVERPASS_HOSTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter",
+  ];
+  let j = null, lastErr = null;
+  for (const host of OVERPASS_HOSTS) {
+    try {
+      const res = await fetch(host, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
+        body: "data=" + encodeURIComponent(ql),
+        signal: AbortSignal.timeout(9000),
+      });
+      if (!res.ok) { lastErr = new Error("Overpass " + res.status + " from " + host); continue; }
+      j = await res.json();
+      break;
+    } catch (e) { lastErr = e; }
+  }
+  if (!j) throw lastErr || new Error("Overpass unavailable");
   const q = (query || "").toLowerCase();
   const rows = (j.elements || [])
     .filter((el) => el.tags && el.tags.name)
@@ -584,12 +599,10 @@ async function searchServicesOSM(place, query) {
   for (const r of rows) (byKind[r.kind] = byKind[r.kind] || []).push(r);
   const queues = Object.values(byKind);
   const out = [];
-  while (out.length < EXT_LIMIT && queues.some((qq) => qq.length)) {
-    for (const qq of queues) {
-      if (!qq.length) continue;
-      out.push(qq.shift());
-      if (out.length === EXT_LIMIT) break;
-    }
+  // interleave the whole set rather than the first page — the caller caches this
+  // and filters it, so a keyword has the full suburb to search, not just 24 rows
+  while (queues.some((qq) => qq.length)) {
+    for (const qq of queues) if (qq.length) out.push(qq.shift());
   }
   return out;
 }
@@ -619,6 +632,24 @@ async function searchServicesPlaces(place, query) {
     source: "Google",
   }));
 }
+/* Overpass is slow and rate-limited, and a suburb's trades barely change — cache
+   the unfiltered result per place and filter in memory. */
+const svcCache = {};
+const SVC_TTL = 60 * 60 * 1000;
+async function searchServicesOSMCached(place, query) {
+  const key = place.toLowerCase();
+  const hit = svcCache[key];
+  if (hit && now() - hit.at < SVC_TTL) return filterServices(hit.rows, query);
+  const rows = await searchServicesOSM(place, "");
+  if (rows.length) svcCache[key] = { rows, at: now() };
+  return filterServices(rows, query);
+}
+function filterServices(rows, query) {
+  const q = (query || "").toLowerCase().trim();
+  const matched = q ? rows.filter((r) => (r.title + " " + r.kind).toLowerCase().includes(q)) : rows;
+  // a keyword that matches nothing shouldn't empty the panel
+  return (matched.length ? matched : rows).slice(0, EXT_LIMIT);
+}
 async function searchServices(place, query) {
   if (PLACES_KEY) {
     try {
@@ -626,7 +657,7 @@ async function searchServices(place, query) {
       if (viaPlaces.length) return viaPlaces;
     } catch { /* fall through to OSM */ }
   }
-  return searchServicesOSM(place, query);
+  return searchServicesOSMCached(place, query);
 }
 
 /* Property market — ABS "Residential Dwellings" (RES_DWELL), the official
@@ -1244,9 +1275,19 @@ module.exports = async function handler(req, res) {
     }
 
     if (path === "/search/property-stats" && method === "GET") {
-      const region = url.searchParams.get("scope") === "all" ? "AUS" : (ABS_CAPITAL[me.state] || "AUS");
+      // RES_DWELL publishes no Australia-wide row, so "All Australia" falls back
+      // to the user's capital rather than showing nothing. The response carries
+      // the region name, so the panel always says which city it is quoting.
+      const capital = ABS_CAPITAL[me.state] || "1GSYD";
+      const wantsAll = url.searchParams.get("scope") === "all";
       try {
-        const stats = await searchPropertyStats(region);
+        let stats = null;
+        // the AUS request 404s rather than returning an empty set, so the
+        // fallback has to survive a throw, not just an empty result
+        if (wantsAll) {
+          try { stats = await searchPropertyStats("AUS"); } catch { stats = null; }
+        }
+        if (!stats || !stats.rows.length) stats = await searchPropertyStats(capital);
         if (!stats || !stats.rows.length) return send(res, 200, { stats: null });
         return send(res, 200, { stats });
       } catch {
