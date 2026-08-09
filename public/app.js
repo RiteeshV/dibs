@@ -1186,11 +1186,16 @@ function externalPanelHtml(){
     if(!extResults.items.length){
       inner='<p class="hint" style="margin:0">No job ads '+jwhere+' right now — try All Australia or a different keyword.</p>';
     }else{
-      var jremote=extResults.items[0].remote;
+      /* the list can mix nearby and remote work, so say which it is */
+      var nLocal=extResults.items.filter(function(x){return !x.remote;}).length;
+      var nRemote=extResults.items.length-nLocal;
+      var jline=nLocal&&nRemote
+        ? 'Live job ads '+jwhere+', plus remote roles open to Australia.'
+        : nLocal
+          ? 'Live job ads '+jwhere+'.'
+          : 'Remote roles open to Australia, via '+esc(extResults.items[0].source)+'.';
       inner=jobInsightHtml()+
-      '<p class="hint" style="margin:0 0 10px">'+(jremote
-        ?'Remote roles open to Australia, via '+esc(extResults.items[0].source)+'.'
-        :'Live job ads '+jwhere+'.')+'</p>'+
+      '<p class="hint" style="margin:0 0 10px">'+jline+'</p>'+
       '<div class="jobrow">'+extResults.items.map(function(it){
         var tags=[it.salary,it.contract,it.remote?"Remote":null].filter(Boolean);
         return '<a class="jobcard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+

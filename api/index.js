@@ -498,9 +498,14 @@ async function searchJobsJooble({ query, where }) {
    steps in when the merged result is empty. One source being down or unkeyed
    quietly reduces coverage rather than emptying the panel. */
 async function searchJobs({ query, where }) {
+  /* Jobicy runs alongside the paid sources rather than only when they fail.
+     It carries remote roles, which are a genuinely different opportunity from
+     a job down the road — not a substitute for one — so both belong in the
+     panel. Local results are ordered first and every card names its source. */
   const sources = [];
   if (HAS_JOBS) sources.push(["Adzuna", () => searchJobsAdzuna({ query, where })]);
   if (JOOBLE_API_KEY) sources.push(["Jooble", () => searchJobsJooble({ query, where })]);
+  sources.push(["Jobicy", () => searchJobsJobicy(query)]);
 
   const settled = await Promise.allSettled(sources.map(([, fn]) => fn()));
   const merged = [];
@@ -518,7 +523,21 @@ async function searchJobs({ query, where }) {
       merged.push(job);
     }
   });
-  if (merged.length) return merged.slice(0, EXT_LIMIT);
+  if (merged.length) {
+    /* Nearby work leads, but remote roles get a guaranteed share. Sorting local
+       first and slicing would hand the whole page to whichever source returns
+       most — with Adzuna at 24 that is the entire list, and the remote source
+       would never be seen. Each keeps a quota, and leftovers fill the rest. */
+    const local = merged.filter((j) => !j.remote);
+    const remote = merged.filter((j) => j.remote);
+    const remoteQuota = Math.min(remote.length, Math.max(0, Math.round(EXT_LIMIT / 3)));
+    const localQuota = Math.min(local.length, EXT_LIMIT - remoteQuota);
+    const out = local.slice(0, localQuota).concat(remote.slice(0, remoteQuota));
+    if (out.length < EXT_LIMIT) {
+      out.push(...local.slice(localQuota), ...remote.slice(remoteQuota));
+    }
+    return out.slice(0, EXT_LIMIT);
+  }
   // A keyword plus a single suburb is a narrow net — "kitchen" near Wentworthville
   // can genuinely match nothing. Widen to the whole country before giving up.
   if (where && HAS_JOBS) {
