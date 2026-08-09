@@ -422,7 +422,19 @@ async function jobicyFetch(tag) {
     remote: true,
   }));
 }
-async function searchJobsAdzuna({ query, where }) {
+/* Adzuna validates parameters only after authenticating, so a bad one can't be
+   detected without a live key — the content_type 400 was exactly that trap.
+   The recency filter is therefore attempted, then dropped on failure, so an
+   unsupported parameter can never cost us the local job feed. */
+async function searchJobsAdzuna(opts) {
+  try {
+    return await adzunaQuery(opts, true);
+  } catch (e) {
+    console.warn("Adzuna recency filter rejected, retrying unfiltered:", e.message);
+    return adzunaQuery(opts, false);
+  }
+}
+async function adzunaQuery({ query, where }, recent) {
   // No content_type param: Adzuna spells it "content-type" and rejects the
   // underscored form with a 400 — but only after auth passes, which is why a
   // fake key returns 401 and a valid one returned 400. JSON is the default.
@@ -431,6 +443,9 @@ async function searchJobsAdzuna({ query, where }) {
     app_key: ADZUNA_APP_KEY.trim(),
     results_per_page: String(Math.min(EXT_LIMIT, 50)),
   });
+  // the panel says "live job ads"; Adzuna's index reaches back years, and ads
+  // ten months old were showing under that heading
+  if (recent) { qs.set("max_days_old", "45"); qs.set("sort_by", "date"); }
   if (query) qs.set("what", query);
   if (where) qs.set("where", where);
   const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString(), { signal: AbortSignal.timeout(12000) });
