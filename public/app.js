@@ -769,6 +769,7 @@ function viewWatches(){
 /* ---------- guest mode ----------
    A signed-out look around. Everything that writes is intercepted before it can
    reach the server, so a guest gets a clear prompt instead of a 401. */
+var adminPreview=false;
 var GUEST_BLOCKED={
   claim:"claim an item", unclaim:"change a claim", flag:"report a listing",
   "new-handle":"change your handle", concierge:"request council pickup",
@@ -784,6 +785,12 @@ function enterGuest(){
 }
 function guestBannerHtml(){
   if(!me||!me.guest)return "";
+  if(adminPreview){
+    return '<div class="note guestbar reveal">'+
+      "Previewing as a signed-out visitor around "+esc(me.suburb)+" — this is the real guest view, not a mock-up. "+
+      '<a data-act="exitpreview" class="glink">Back to your account</a>'+
+    '</div>';
+  }
   return '<div class="note guestbar reveal">'+
     "You're browsing as a guest around "+esc(me.suburb)+" — listings, jobs, services and market data are live. "+
     '<a data-act="switch-auth" class="glink">Create a free account</a> to post or claim anything.'+
@@ -1187,10 +1194,10 @@ function externalPanelHtml(){
       '<div class="jobrow">'+extResults.items.map(function(it){
         var tags=[it.salary,it.contract,it.remote?"Remote":null].filter(Boolean);
         return '<a class="jobcard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
-          '<div class="jhead">'+
-            '<span class="jlogo">'+(it.logo
-              ?'<img src="'+esc(it.logo)+'" alt="" loading="lazy" referrerpolicy="no-referrer">'
-              :'<span class="jinit">'+esc(initialsFor(it.company||it.title))+'</span>')+'</span>'+
+          '<div class="jhead'+(it.logo?"":" nologo")+'">'+
+            /* Adzuna and Jooble ship no logo. A two-letter monogram reads as
+               noise, so the name simply takes the space instead. */
+            (it.logo?'<span class="jlogo"><img src="'+esc(it.logo)+'" alt="" loading="lazy" referrerpolicy="no-referrer"></span>':'')+
             '<span class="jheadtxt">'+
               '<span class="jt">'+esc(it.title)+'</span>'+
               (it.company?'<span class="jco">'+esc(it.company)+'</span>':'')+
@@ -1489,6 +1496,7 @@ function render(){
   var d=daysTo(next);var lbl=d<=0?"Today":d===1?"Tomorrow":"in "+d+" days";
   var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():tab==="admin"?viewAdmin():viewProfile();
   // a guest has no notifications and no account to attach them to
+  var gpv=(me&&me.isAdmin&&!me.guest)?'<button class="iconbtn" data-act="guestpreview" title="Preview the app as a signed-out visitor">'+ICONS.globe+'</button>':"";
   var bell=(me&&me.guest)?"":'<button class="iconbtn" data-tab="alerts" title="Notifications" style="position:relative">'+ICONS.bell+(unread?'<span class="dock-badge js-badge">'+unread+'</span>':'')+'</button>';
   var themesw='<div class="themesw" data-act="theme" role="button" aria-label="Toggle theme"><span class="knob">'+(theme()==="dark"?ICONS.moon:ICONS.sun)+'</span></div>';
   var dock='<aside class="dock-desktop">'+
@@ -1501,8 +1509,8 @@ function render(){
     '<div class="banner" style="margin-top:20px;flex-direction:column;align-items:flex-start;gap:3px"><span class="lbl">Next truck day</span><span class="cnt">'+WD[me.pickupWeekday].slice(0,3)+' · '+lbl+'</span></div>'+
     '<div class="dfoot">Signed in as <b>'+esc(me.handle)+'</b><br><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a></div>'+
   '</aside>';
-  var mtop='<div class="mtop"><img src="/logo.svg" alt=""><span class="nm">'+APP+'</span>'+bell+themesw+'</div>';
-  var dtop='<div class="dtopbar"><div class="right">'+bell+themesw+'</div></div>';
+  var mtop='<div class="mtop"><img src="/logo.svg" alt=""><span class="nm">'+APP+'</span>'+gpv+bell+themesw+'</div>';
+  var dtop='<div class="dtopbar"><div class="right">'+gpv+bell+themesw+'</div></div>';
   var urgent=d<=1;
   var banner='<div class="banner reveal'+(urgent?" urgent":"")+'"><span class="lbl">Next truck day</span><span class="cnt">'+WD[me.pickupWeekday].slice(0,3)+' · '+lbl+'</span></div>';
   var dockm='<nav class="dock-mobile"><div class="dock-liquid" id="dockLiquidM"></div>'+navItems().map(function(n){
@@ -1700,6 +1708,13 @@ function act(action,id,el){
   if(action==="scope"){feedScope=id;render();return;}
   if(action==="watch"){toggleWatch(id);return;}
   if(action==="guest"){enterGuest();return;}
+  if(action==="guestpreview"){adminPreview=true;enterGuest();return;}
+  if(action==="exitpreview"){
+    adminPreview=false;guestMode=false;
+    api("/me").then(function(j){me=j.me;dbMode=j.dbMode;tab="feed";refresh();loadWatches(true);})
+      .catch(function(){location.reload();});
+    return;
+  }
   if(me&&me.guest&&action==="switch-auth"){me=null;guestMode=false;authMode="signup";render();return;}
   if(me&&me.guest&&GUEST_BLOCKED[action]){
     toast("Create a free account to "+GUEST_BLOCKED[action]+" — it takes about ten seconds.",true);

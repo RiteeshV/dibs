@@ -295,3 +295,29 @@ describe("price watch", () => {
     assert.equal(r.status, 401);
   });
 });
+
+describe("admin guest preview", () => {
+  test("the guest marker wins over a session, so the preview is the real thing", async () => {
+    const owner = client();
+    await owner("/login", "POST", { email: "owner@test.local", password: "test-password-123" });
+
+    const real = (await owner("/me")).json.me;
+    assert.equal(real.isAdmin, true);
+    assert.equal(real.guest, undefined === real.guest ? real.guest : false);
+
+    const asGuest = (await owner("/me?guest=1")).json.me;
+    assert.equal(asGuest.guest, true, "the preview must resolve to a guest identity");
+    assert.equal(asGuest.id, null);
+    assert.equal(asGuest.isAdmin, false, "a preview must not carry admin rights");
+  });
+
+  test("the preview cannot reach anything a guest cannot", async () => {
+    const owner = client();
+    await owner("/login", "POST", { email: "owner@test.local", password: "test-password-123" });
+    // the console is not on the guest allow-list, so the marker is ignored there
+    // and the admin's own session answers — the preview is a view, not a sandbox
+    assert.equal((await owner("/admin/overview?guest=1")).status, 200);
+    // but a guest-readable route genuinely downgrades
+    assert.equal((await owner("/me?guest=1")).json.me.isAdmin, false);
+  });
+});

@@ -1126,9 +1126,12 @@ module.exports = async function handler(req, res) {
        panels so the app can be looked at without an account. The allow-list is
        GET-only and enumerated — a guest is never a user record, has no id, and
        so cannot own, claim, flag or post anything. */
-    // ?guest=1 must be explicit: without it a signed-out request still 401s, so
-    // the app shows its login screen instead of silently starting a tour.
-    if (!me && method === "GET" && url.searchParams.get("guest") === "1" && GUEST_READABLE.has(path)) {
+    /* ?guest=1 must be explicit: without it a signed-out request still 401s, so
+       the app shows its login screen instead of silently starting a tour.
+       It also wins over an existing session, which is what lets an admin preview
+       the guest view honestly — the same code path, not a mock-up. The guest
+       surface is a read-only subset, so this can only ever show less. */
+    if (method === "GET" && url.searchParams.get("guest") === "1" && GUEST_READABLE.has(path)) {
       me = guestUser(url.searchParams.get("as"));
     }
     if (!me) return send(res, 401, { error: "Not logged in." });
