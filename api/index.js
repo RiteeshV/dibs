@@ -1284,6 +1284,8 @@ module.exports = async function handler(req, res) {
     }
 
     if (path === "/profile/newhandle" && method === "POST") {
+      // the owner account is always "Admin" — refuse here too, not just in the UI
+      if (isRootAdmin(me)) return send(res, 400, { error: "The owner account's name is fixed as Admin." });
       let h = anonHandle();
       while (h === me.handle) h = anonHandle();
       me.handle = h;

@@ -1318,8 +1318,11 @@ function viewProfile(){
   var h='<h2 class="st reveal">Profile</h2><div class="pcard reveal"><div class="avatar">'+esc((me.handle||"D")[0])+'</div>'+
   '<div style="font-weight:700;font-family:\'Manrope\',sans-serif;font-size:17px">'+esc(me.handle)+'</div>'+
   '<div style="font-size:12px;color:var(--soft)">'+esc(me.suburb)+' · your anonymous public identity</div>'+
-  '<div style="margin-top:12px"><button class="pill gh sm" data-act="new-handle">Generate new handle</button></div>'+
-  '<p class="hint">Handles are picked automatically — you can\'t choose one, so nothing about it can identify you.</p>'+
+  (me.handleLocked
+    ? '<div style="margin-top:12px"><span class="cqbadge done">Administrator</span></div>'+
+      '<p class="hint">The owner account always appears as <b>Admin</b> — fixed, and not regenerable.</p>'
+    : '<div style="margin-top:12px"><button class="pill gh sm" data-act="new-handle">Generate new handle</button></div>'+
+      '<p class="hint">Handles are picked automatically — you can\'t choose one, so nothing about it can identify you.</p>')+
   (me.avgRating?'<div style="font-size:13px;margin-top:6px;color:var(--amber)">'+"★".repeat(Math.round(me.avgRating))+' ('+me.avgRating.toFixed(1)+')</div>':"")+
   '<div class="stats"><div class="stat"><span class="n">'+items.filter(function(i){return i.mine;}).length+'</span><span class="l">Posted</span></div>'+
   '<div class="stat"><span class="n">'+me.handoffs+'</span><span class="l">Handed off</span></div>'+
