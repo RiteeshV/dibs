@@ -469,7 +469,7 @@ function boot(){
   bindModalOnce();
   window.addEventListener("resize",function(){if(me)positionDockLiquid();});
   api("/config").then(function(j){googleClientId=j.googleClientId||null;ebayEnabled=!!j.ebayEnabled;domainEnabled=!!j.domainEnabled;jobsEnabled=!!j.jobsEnabled;if(!me)render();}).catch(function(){});
-  api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();}).catch(function(){render();});
+  api("/me").then(function(j){me=j.me;dbMode=j.dbMode;refresh();startPolling();loadWatches();}).catch(function(){render();});
 }
 function refresh(){
   return Promise.all([api("/items"),api("/notifications"),api("/receipts").catch(function(){return {receipts:[]};})]).then(function(r){
@@ -697,6 +697,73 @@ function viewAuthLogin(){
   '</div>'+
   '<div class="legal" style="margin-top:18px"><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a> · Works Australia-wide</div>'+
   '</div>';
+}
+
+/* ---------- price watch ----------
+   Shows what a thing has actually cost while you've been watching. Every number
+   is observed, so there are no "best month to buy" predictions we can't back. */
+var watches=null, watchedIds={};
+function loadWatches(force){
+  if(!me||me.guest)return;
+  if(watches&&!force)return;
+  api("/watch").then(function(j){
+    watches=j.watches||[];
+    watchedIds={};watches.forEach(function(w){watchedIds[w.itemId]=true;});
+    render();
+  }).catch(function(){watches=[];});
+}
+function toggleWatch(itemId){
+  if(watchedIds[itemId]){
+    var w=(watches||[]).filter(function(x){return x.itemId===itemId;})[0];
+    if(!w)return;
+    api("/watch/"+encodeURIComponent(w.id),"DELETE").then(function(){
+      toast("Stopped tracking that price.");loadWatches(true);
+    }).catch(function(e){toast(e.message,true);});
+    return;
+  }
+  api("/watch","POST",{itemId:itemId}).then(function(){
+    toast("Tracking that price — checked daily, and you'll hear if it hits a new low.");
+    loadWatches(true);
+  }).catch(function(e){toast(e.message,true);});
+}
+/* A sparkline of observed prices — flat line if we've only seen one. */
+function sparkline(points){
+  if(!points||points.length<2)return '<div class="sparkflat"></div>';
+  var vals=points.map(function(p){return p.amount;});
+  var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals), span=(hi-lo)||1;
+  var w=160,h=34;
+  var d=points.map(function(p,i){
+    var x=(i/(points.length-1))*w;
+    var y=h-((p.amount-lo)/span)*(h-4)-2;
+    return (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1);
+  }).join(" ");
+  return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true"><path d="'+d+'"/></svg>';
+}
+function viewWatches(){
+  if(!watches||!watches.length)return "";
+  return '<h2 class="st reveal">Price watch</h2>'+
+    '<p class="hint reveal" style="margin:-6px 0 12px">Checked once a day. Figures are what the listing has actually cost since you started watching.</p>'+
+    '<div class="watchrow reveal">'+watches.map(function(w){
+      var pill=w.gone?'<span class="cqbadge">ended</span>':
+        w.atLow&&w.points>1?'<span class="cqbadge arranged">lowest yet</span>':"";
+      return '<div class="watchcard">'+
+        '<div class="wtop">'+
+          (w.image?'<img src="'+esc(w.image)+'" alt="" loading="lazy">':'<div class="ebayph">'+ICONS.cart+'</div>')+
+          '<div class="wmeta"><a class="wt" href="'+esc(w.url||"#")+'" target="_blank" rel="noopener">'+esc(w.title||"Watched item")+'</a>'+
+            '<div class="wnow">'+(w.current!=null?money(w.current):"—")+' '+pill+'</div></div>'+
+        '</div>'+
+        sparkline(w.history)+
+        '<div class="wstats">'+
+          '<span>Low '+(w.low!=null?money(w.low):"—")+'</span>'+
+          '<span>High '+(w.high!=null?money(w.high):"—")+'</span>'+
+          '<span>'+w.points+' check'+(w.points===1?"":"s")+'</span>'+
+        '</div>'+
+        (w.sinceAdded!=null?'<div class="wdelta '+(w.sinceAdded>0?"up":w.sinceAdded<0?"down":"")+'">'+
+          (w.sinceAdded>0?"▲ ":w.sinceAdded<0?"▼ ":"")+Math.abs(w.sinceAdded).toFixed(1)+'% since you started watching</div>':
+          '<div class="wdelta">Tracking from today — check back tomorrow for a trend.</div>')+
+        '<button class="pill gh sm" data-act="watch" data-id="'+esc(w.itemId)+'">Stop tracking</button>'+
+      '</div>';
+    }).join("")+'</div>';
 }
 
 /* ---------- guest mode ----------
@@ -1149,12 +1216,18 @@ function externalPanelHtml(){
       inner='<p class="hint" style="margin:0">No eBay AU results for “'+esc(extResults.q)+'”.</p>';
     }else{
       inner=priceIndexHtml(extResults.cat)+'<div class="ebayrow">'+extResults.items.map(function(it){
-        return '<a class="ebaycard" href="'+esc(it.url)+'" target="_blank" rel="noopener">'+
-          (it.image?'<img src="'+esc(it.image)+'" alt="" loading="lazy">':'<div class="ebayph">'+ICONS.cart+'</div>')+
-          '<div class="et">'+esc(it.title)+'</div>'+
-          (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
-          '<span class="esrc">eBay AU</span>'+
-        '</a>';
+        var watched=watchedIds[it.id];
+        return '<div class="ebaycard">'+
+          '<a href="'+esc(it.url)+'" target="_blank" rel="noopener" class="ecl">'+
+            (it.image?'<img src="'+esc(it.image)+'" alt="" loading="lazy">':'<div class="ebayph">'+ICONS.cart+'</div>')+
+            '<div class="et">'+esc(it.title)+'</div>'+
+            (it.price?'<div class="ep">'+esc(it.price)+'</div>':'')+
+          '</a>'+
+          '<div class="efoot"><span class="esrc">eBay AU</span>'+
+          (it.id&&!(me&&me.guest)?'<button class="watchbtn'+(watched?" on":"")+'" data-act="watch" data-id="'+esc(it.id)+'" title="'+(watched?"Watching":"Track this price")+'">'+
+            (watched?"Watching":"Track price")+'</button>':'')+
+          '</div>'+
+        '</div>';
       }).join("")+'</div>'+
       '<div class="ddelsewhere" style="padding:10px 0 0">'+
         '<a class="pill gh sm" style="text-decoration:none" href="https://www.ebay.com.au/sch/i.html?_nkw='+encodeURIComponent(extResults.q)+'" target="_blank" rel="noopener">More on eBay AU <span class="ic-inline">'+ICONS.external+'</span></a>'+
@@ -1200,10 +1273,12 @@ function viewPost(){
   '<button type="submit" class="pill pri block">Post it</button></form>';
 }
 function viewMine(){
+  loadWatches();
   var mine=items.filter(function(i){return i.mine;});
   var claimed=items.filter(function(i){return i.claim&&i.claim.byMe&&!i.mine;});
   var h='<h2 class="st reveal">My stuff</h2><div id="feedList" class="itemgrid">'+(mine.length?mine.map(function(it,i){return card(it,i);}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.pin+'</span>Nothing posted yet — head to Post.</div>')+'</div>';
   if(claimed.length)h+='<h2 class="st reveal">Claimed by me</h2><div id="feedList2" class="itemgrid">'+claimed.map(function(it,i){return card(it,i);}).join("")+'</div>';
+  h+=viewWatches();
   return h;
 }
 /* ---------- admin console (only rendered when me.isAdmin) ---------- */
@@ -1623,6 +1698,7 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
+  if(action==="watch"){toggleWatch(id);return;}
   if(action==="guest"){enterGuest();return;}
   if(me&&me.guest&&action==="switch-auth"){me=null;guestMode=false;authMode="signup";render();return;}
   if(me&&me.guest&&GUEST_BLOCKED[action]){

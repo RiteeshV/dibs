@@ -313,6 +313,27 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .statcard .sm{font-size:11px;color:var(--faint);margin-top:5px}
 /* ---------- admin console ---------- */
 .newchip.sample{background:var(--amber);color:#fff}
+/* ---------- price watch ---------- */
+.ebaycard .ecl{display:block;text-decoration:none;color:inherit}
+.efoot{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 9px 9px}
+.watchbtn{border:1px solid var(--line2);background:var(--card);color:var(--soft);font-family:inherit;font-size:10.5px;font-weight:800;border-radius:999px;padding:4px 9px;cursor:pointer;white-space:nowrap;transition:border-color .16s,color .16s,background .16s}
+.watchbtn:hover{border-color:var(--teal);color:var(--teal)}
+.watchbtn.on{background:var(--tealglow);border-color:var(--teal);color:var(--teal)}
+.watchrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.watchcard{border:1px solid var(--line);border-radius:16px;padding:13px;background:var(--card)}
+.wtop{display:flex;gap:11px;align-items:flex-start}
+.wtop img,.wtop .ebayph{width:52px;height:52px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--line)}
+.wmeta{min-width:0}
+.wt{display:block;font-size:12.5px;font-weight:700;color:var(--ink);text-decoration:none;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.wt:hover{color:var(--teal)}
+.wnow{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.4px;margin-top:4px;display:flex;align-items:center;gap:7px}
+.spark{width:100%;height:34px;margin:10px 0 6px;overflow:visible}
+.spark path{fill:none;stroke:var(--teal);stroke-width:2;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.sparkflat{height:34px;margin:10px 0 6px;border-bottom:2px dashed var(--line2)}
+.wstats{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--faint);font-weight:600}
+.wdelta{font-size:11.5px;font-weight:700;color:var(--soft);margin:6px 0 9px}
+.wdelta.up{color:var(--amber)}
+.wdelta.down{color:var(--teal)}
 .note.guestbar{border-color:var(--teal);color:var(--ink);background:var(--tealglow)}
 .note.guestbar .glink{font-weight:800;color:var(--teal);cursor:pointer;text-decoration:underline}
 .cqcard{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--card);margin-bottom:10px}

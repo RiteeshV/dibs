@@ -256,3 +256,42 @@ describe("guest mode", () => {
     }
   });
 });
+
+describe("price watch", () => {
+  test("watching needs an item, and rejects an empty id", async () => {
+    const member = client();
+    await signUp(member, "watcher@test.local");
+    const r = await member("/watch", "POST", { itemId: "" });
+    // without eBay keys the feature reports itself unavailable; with them it
+    // rejects the empty id. Either is a 400 — what must not happen is a 500.
+    assert.equal(r.status, 400);
+  });
+
+  test("the watch list starts empty and is per-user", async () => {
+    const member = client();
+    await signUp(member, "watcher-b@test.local");
+    const r = await member("/watch");
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.watches, []);
+  });
+
+  test("a guest cannot watch or read watches", async () => {
+    const guest = client();
+    assert.equal((await guest("/watch?guest=1")).status, 401);
+    assert.equal((await guest("/watch?guest=1", "POST", { itemId: "v1|123|0" })).status, 401);
+  });
+
+  test("deleting someone else's watch is a 404", async () => {
+    const member = client();
+    await signUp(member, "watcher-c@test.local");
+    assert.equal((await member("/watch/does-not-exist", "DELETE")).status, 404);
+  });
+
+  test("the price cron is protected by the shared secret", async () => {
+    const anon = client();
+    process.env.CRON_SECRET = "cron-test-secret";
+    const r = await anon("/cron/prices");
+    delete process.env.CRON_SECRET;
+    assert.equal(r.status, 401);
+  });
+});

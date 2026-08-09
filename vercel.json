@@ -1,13 +1,31 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index" },
-    { "source": "/privacy", "destination": "/privacy.html" },
-    { "source": "/terms", "destination": "/terms.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    }
   ],
   "functions": {
-    "api/index.js": { "maxDuration": 30 }
+    "api/index.js": {
+      "maxDuration": 30
+    }
   },
   "crons": [
-    { "path": "/api/cron/keepwarm", "schedule": "0 6 * * *" }
+    {
+      "path": "/api/cron/keepwarm",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/prices",
+      "schedule": "0 7 * * *"
+    }
   ]
 }

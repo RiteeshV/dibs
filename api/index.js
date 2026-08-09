@@ -77,8 +77,8 @@ function tierFor(points) {
 /* ---------------- Generic store ---------------- */
 // Demo store (per-instance memory)
 const g = globalThis;
-if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {}, meta: {} };
-for (const c of ["users", "items", "notifs", "receipts", "meta"]) if (!g.__ksMem[c]) g.__ksMem[c] = {};
+if (!g.__ksMem) g.__ksMem = { users: {}, items: {}, notifs: {}, receipts: {}, meta: {}, watches: {} };
+for (const c of ["users", "items", "notifs", "receipts", "meta", "watches"]) if (!g.__ksMem[c]) g.__ksMem[c] = {};
 
 /* When the configured database becomes unreachable (project deleted, paused, DNS
    failure, outage) we fall back to the in-memory store and report dbMode "demo"
@@ -307,8 +307,11 @@ async function searchEbay(query, categoryIds) {
     if (!res.ok) throw new Error("eBay search failed: " + res.status);
     const j = await res.json();
     return (j.itemSummaries || []).slice(0, EXT_LIMIT).map((it) => ({
+      id: it.itemId || null,
       title: it.title,
       price: it.price ? (it.price.value + " " + it.price.currency) : null,
+      amount: it.price ? Number(it.price.value) : null,
+      currency: it.price ? it.price.currency : null,
       image: it.image ? it.image.imageUrl : null,
       url: it.itemWebUrl,
       condition: it.condition || null,
@@ -814,6 +817,49 @@ async function probeExternalSources() {
   return out;
 }
 
+/* ---- Price watch ----
+   A watched item's price is recorded each day so the app can say what something
+   normally costs rather than only what it costs right now. History is observed,
+   never predicted — no "buy in March" claims we can't stand behind. */
+async function getEbayItemPrice(itemId) {
+  const token = await getEbayToken();
+  const res = await fetch("https://api.ebay.com/buy/browse/v1/item/" + encodeURIComponent(itemId), {
+    headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_AU" },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (res.status === 404) return { gone: true };
+  if (!res.ok) throw new Error("eBay item " + res.status);
+  const j = await res.json();
+  return {
+    amount: j.price ? Number(j.price.value) : null,
+    currency: j.price ? j.price.currency : "AUD",
+    title: j.title || null,
+    image: j.image ? j.image.imageUrl : null,
+    url: j.itemWebUrl || null,
+  };
+}
+function money(n) {
+  return "$" + Number(n).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function watchSummary(w) {
+  const pts = (w.history || []).filter((p) => typeof p.amount === "number");
+  const amounts = pts.map((p) => p.amount);
+  const low = amounts.length ? Math.min(...amounts) : null;
+  const high = amounts.length ? Math.max(...amounts) : null;
+  const current = amounts.length ? amounts[amounts.length - 1] : null;
+  return {
+    id: w.id, itemId: w.itemId, title: w.title, image: w.image, url: w.url,
+    currency: w.currency || "AUD",
+    current, low, high,
+    atLow: low != null && current != null && current <= low,
+    sinceAdded: pts.length > 1 && pts[0].amount ? Math.round(((current - pts[0].amount) / pts[0].amount) * 1000) / 10 : null,
+    points: pts.length,
+    history: pts.slice(-30),
+    gone: !!w.gone,
+    addedAt: w.addedAt,
+  };
+}
+
 /* ---- Guest mode ----
    Exactly the read-only surfaces a visitor needs to judge the app. Anything that
    writes, or that exposes another person's data, is deliberately absent. */
@@ -919,6 +965,40 @@ module.exports = async function handler(req, res) {
        traffic (Supabase pauses at ~1 week). A daily Vercel cron hits this and
        performs a real round-trip write+read so the provider sees genuine activity
        — a plain HTTP ping to the app would not touch the database at all. */
+    /* Records one price point per watched item per run. Only tells a watcher
+       about a drop that beats everything seen before — a nudge on every wobble
+       trains people to ignore it. */
+    if (path === "/cron/prices") {
+      const cronSecret = process.env.CRON_SECRET || "";
+      if (cronSecret && req.headers.authorization !== "Bearer " + cronSecret)
+        return send(res, 401, { error: "Unauthorized." });
+      if (!HAS_EBAY) return send(res, 200, { ok: true, checked: 0, note: "eBay not configured" });
+      const watches = await db.list("watches");
+      let checked = 0, drops = 0, ended = 0;
+      for (const w of watches) {
+        if (w.gone) continue;
+        let live;
+        try { live = await getEbayItemPrice(w.itemId); } catch { continue; }
+        checked++;
+        if (live.gone) {
+          w.gone = true; ended++;
+          await db.put("watches", w.id, w);
+          continue;
+        }
+        if (live.amount == null) continue;
+        const prevLow = (w.history || []).reduce((m, p) => (p.amount != null && p.amount < m ? p.amount : m), Infinity);
+        w.history = (w.history || []).concat([{ at: now(), amount: live.amount }]).slice(-180);
+        if (live.image) w.image = live.image;
+        await db.put("watches", w.id, w);
+        if (live.amount < prevLow) {
+          drops++;
+          await notify(w.userId,
+            "“" + (w.title || "A watched item") + "” dropped to " + money(live.amount) + " — the lowest since you started watching.", null);
+        }
+      }
+      return send(res, 200, { ok: true, checked, drops, ended });
+    }
+
     if (path === "/cron/keepwarm") {
       const cronSecret = process.env.CRON_SECRET || "";
       if (cronSecret && req.headers.authorization !== "Bearer " + cronSecret)
@@ -1269,6 +1349,49 @@ module.exports = async function handler(req, res) {
       }
 
       return send(res, 404, { error: "Not found." });
+    }
+
+    /* ---- Price watch ---- */
+    if (path === "/watch" && method === "GET") {
+      const all = await db.list("watches");
+      return send(res, 200, {
+        watches: all.filter((w) => w.userId === me.id)
+          .sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
+          .map(watchSummary),
+      });
+    }
+
+    if (path === "/watch" && method === "POST") {
+      if (!HAS_EBAY) return send(res, 400, { error: "Price watch needs the eBay connection." });
+      const itemId = String(body.itemId || "").trim();
+      if (!itemId) return send(res, 400, { error: "Nothing to watch." });
+      const all = await db.list("watches");
+      if (all.some((w) => w.userId === me.id && w.itemId === itemId))
+        return send(res, 400, { error: "You're already watching that." });
+      if (all.filter((w) => w.userId === me.id).length >= 20)
+        return send(res, 400, { error: "You can watch up to 20 items." });
+      let live;
+      try { live = await getEbayItemPrice(itemId); }
+      catch { return send(res, 502, { error: "Couldn't reach eBay just now — try again." }); }
+      if (!live || live.gone) return send(res, 404, { error: "That listing has ended." });
+      const w = {
+        id: uid("w"), userId: me.id, itemId,
+        title: live.title || String(body.title || "").slice(0, 140),
+        image: live.image || body.image || null,
+        url: live.url || body.url || null,
+        currency: live.currency || "AUD",
+        addedAt: now(),
+        history: live.amount != null ? [{ at: now(), amount: live.amount }] : [],
+      };
+      await db.put("watches", w.id, w);
+      return send(res, 200, { ok: true, watch: watchSummary(w) });
+    }
+
+    if (path.startsWith("/watch/") && method === "DELETE") {
+      const w = await db.get("watches", path.slice("/watch/".length));
+      if (!w || w.userId !== me.id) return send(res, 404, { error: "Not watching that." });
+      await db.del("watches", w.id);
+      return send(res, 200, { ok: true });
     }
 
     if (path === "/search/price-index" && method === "GET") {
