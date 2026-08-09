@@ -453,7 +453,12 @@ function theme(){return localStorage.getItem("dibs-theme")||"light";}
 function applyTheme(){document.documentElement.setAttribute("data-theme",theme());}
 function btn(act,id,label,variant){return '<button class="pill'+(variant?" "+variant:"")+'" data-act="'+act+'" data-id="'+id+'">'+label+'</button>';}
 
+var guestMode=false;
 function api(path,method,body){
+  /* In guest mode every read carries an explicit marker — the server refuses to
+     treat a request as a guest without it, so a signed-out visitor still lands
+     on the login screen rather than being dropped into a tour. */
+  if(guestMode)path+=(path.indexOf("?")>-1?"&":"?")+"guest=1";
   return fetch("/api"+path,{method:method||"GET",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:body?JSON.stringify(body):undefined})
   .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"Request failed");return j;});});
 }
@@ -667,6 +672,7 @@ function viewAuthSignup(){
     '<button type="submit" class="pill pri block">Create account</button>'+
     '</form>'+
     '<div class="switch">Already have an account? <a data-act="switch-auth">Log in</a></div>'+
+    '<div class="switch">Just looking? <a data-act="guest">Have a look around first</a></div>'+
     '<div class="legal" style="margin-top:16px"><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a> · Works Australia-wide</div>'+
   '</div>'+
   '</div></div>';
@@ -687,8 +693,33 @@ function viewAuthLogin(){
   '</form>'+
   '<div class="altauth">'+googleLink+'</div>'+
   '<div class="switch">New here? <a data-act="switch-auth">Create an account</a></div>'+
+  '<div class="switch">Just looking? <a data-act="guest">Have a look around first</a></div>'+
   '</div>'+
   '<div class="legal" style="margin-top:18px"><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a> · Works Australia-wide</div>'+
+  '</div>';
+}
+
+/* ---------- guest mode ----------
+   A signed-out look around. Everything that writes is intercepted before it can
+   reach the server, so a guest gets a clear prompt instead of a 401. */
+var GUEST_BLOCKED={
+  claim:"claim an item", unclaim:"change a claim", flag:"report a listing",
+  "new-handle":"change your handle", concierge:"request council pickup",
+  priced:"post a listing", save:"save a listing", rate:"leave a rating",
+  handoff:"confirm a handoff", del:"delete a listing", compare:"compare listings",
+};
+function enterGuest(){
+  tab="feed";guestMode=true;
+  api("/me").then(function(j){
+    me=j.me;dbMode=j.dbMode;
+    return api("/items").then(function(r){items=r.items||[];render();});
+  }).catch(function(){toast("Couldn't start the tour — try again.",true);});
+}
+function guestBannerHtml(){
+  if(!me||!me.guest)return "";
+  return '<div class="note guestbar reveal">'+
+    "You're browsing as a guest around "+esc(me.suburb)+" — listings, jobs, services and market data are live. "+
+    '<a data-act="switch-auth" class="glink">Create a free account</a> to post or claim anything.'+
   '</div>';
 }
 
@@ -975,6 +1006,7 @@ function feedListHtml(){
   return '<div class="empty reveal"><span class="big">'+ICONS.all+'</span>'+msg+(searchQ?' — try the links below.':', or share the app link!')+'</div>';
 }
 function viewFeed(){
+  var guestbar=guestBannerHtml();
   var demo=dbMode==="demo"?'<div class="note demo-warn reveal">Heads up — pilot demo storage: data may occasionally reset until the free database is attached (LAUNCH-KIT step 1).</div>':"";
   var search='<div class="searchwrap reveal"><span class="sic">'+ICONS.search+'</span><input id="f-search" placeholder="'+esc(searchPlaceholderText())+'" value="'+esc(searchQ)+'" autocomplete="off"><div class="searchdrop" id="searchDrop" hidden></div></div>';
   var loc='<div class="locrow reveal">'+
@@ -999,7 +1031,7 @@ function viewFeed(){
         ?'<button class="pill gh sm" data-act="ebaysearch">eBay AU</button>'
         :'<button class="pill gh sm" data-act="psearch" data-pf="'+p+'">'+p+' ↗</button>';
     }).join("")+'</div></div>';
-  return demo+heroHtml()+'<h2 class="st reveal">Fresh near you</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+externalPanelHtml()+psearch;
+  return guestbar+demo+heroHtml()+'<h2 class="st reveal">Fresh near you</h2>'+search+loc+catrail+filterPanelHtml()+'<div id="feedList" class="itemgrid">'+feedListHtml()+'</div>'+externalPanelHtml()+psearch;
 }
 function externalPanelHtml(){
   var inner="";
@@ -1360,6 +1392,7 @@ function viewProfile(){
 
 /* ---------- render ---------- */
 function navItems(){
+  if(me&&me.guest)return [["feed",ICONS.all,"Shop"]];
   var n=[["feed",ICONS.all,"Shop"],["post",ICONS.plus,"Post"],["mine",ICONS.pin,"My stuff"],["alerts",ICONS.bell,"Alerts"],["profile",ICONS.user,"Profile"]];
   if(me&&me.isAdmin)n.push(["admin",ICONS.trophy,"Admin"]);
   return n;
@@ -1380,7 +1413,8 @@ function render(){
   var next=nextPickup();
   var d=daysTo(next);var lbl=d<=0?"Today":d===1?"Tomorrow":"in "+d+" days";
   var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():tab==="admin"?viewAdmin():viewProfile();
-  var bell='<button class="iconbtn" data-tab="alerts" title="Notifications" style="position:relative">'+ICONS.bell+(unread?'<span class="dock-badge js-badge">'+unread+'</span>':'')+'</button>';
+  // a guest has no notifications and no account to attach them to
+  var bell=(me&&me.guest)?"":'<button class="iconbtn" data-tab="alerts" title="Notifications" style="position:relative">'+ICONS.bell+(unread?'<span class="dock-badge js-badge">'+unread+'</span>':'')+'</button>';
   var themesw='<div class="themesw" data-act="theme" role="button" aria-label="Toggle theme"><span class="knob">'+(theme()==="dark"?ICONS.moon:ICONS.sun)+'</span></div>';
   var dock='<aside class="dock-desktop">'+
     '<div class="dbrand"><img src="/logo.svg" alt=""><span class="nm">'+APP+'</span></div>'+
@@ -1589,6 +1623,12 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
+  if(action==="guest"){enterGuest();return;}
+  if(me&&me.guest&&action==="switch-auth"){me=null;guestMode=false;authMode="signup";render();return;}
+  if(me&&me.guest&&GUEST_BLOCKED[action]){
+    toast("Create a free account to "+GUEST_BLOCKED[action]+" — it takes about ten seconds.",true);
+    return;
+  }
   if(action==="cstage"){var p=String(id).split("|");setConcierge(p[0],p[1]);return;}
   if(action==="mod"){
     var m=String(id).split("|");

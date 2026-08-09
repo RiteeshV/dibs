@@ -2,8 +2,11 @@
   "name": "kerbside",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "dev": "node local-server.js"
+    "dev": "node local-server.js",
+    "test": "node --test test/*.test.js"
   }
 }

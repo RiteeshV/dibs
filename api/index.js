@@ -814,6 +814,27 @@ async function probeExternalSources() {
   return out;
 }
 
+/* ---- Guest mode ----
+   Exactly the read-only surfaces a visitor needs to judge the app. Anything that
+   writes, or that exposes another person's data, is deliberately absent. */
+const GUEST_READABLE = new Set([
+  "/items", "/me",
+  "/search/ebay", "/search/jobs", "/search/services",
+  "/search/property-stats", "/search/price-index", "/search/job-insights",
+]);
+const GUEST_SUBURBS = { NSW: "Parramatta", VIC: "Brunswick", QLD: "West End", SA: "Norwood", WA: "Fremantle", TAS: "Sandy Bay", NT: "Nightcliff", ACT: "Braddon" };
+/* Not persisted and never written back — id is null so ownership checks, which
+   all compare against a real user id, can never match a guest. */
+function guestUser(state) {
+  const st = GUEST_SUBURBS[String(state || "").toUpperCase()] ? String(state).toUpperCase() : "NSW";
+  return {
+    id: null, guest: true, email: null, handle: "Guest",
+    suburb: GUEST_SUBURBS[st], state: st,
+    pickupWeekday: 3, handoffs: 0, truckSaved: 0, ratings: [], ecoPoints: 0,
+    platformTokens: {}, createdAt: now(),
+  };
+}
+
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
   return { handle: displayHandle(u), suburb: u.suburb, trusted: (u.handoffs || 0) >= 3, admin: isAdmin(u) };
@@ -1020,7 +1041,16 @@ module.exports = async function handler(req, res) {
 
     // ---- authed routes ----
     const sess = verify(getCookie(req, "ks_session"));
-    const me = sess ? await db.get("users", sess.uid) : null;
+    let me = sess ? await db.get("users", sess.uid) : null;
+    /* Guest mode: a signed-out visitor can read the feed and the external data
+       panels so the app can be looked at without an account. The allow-list is
+       GET-only and enumerated — a guest is never a user record, has no id, and
+       so cannot own, claim, flag or post anything. */
+    // ?guest=1 must be explicit: without it a signed-out request still 401s, so
+    // the app shows its login screen instead of silently starting a tour.
+    if (!me && method === "GET" && url.searchParams.get("guest") === "1" && GUEST_READABLE.has(path)) {
+      me = guestUser(url.searchParams.get("as"));
+    }
     if (!me) return send(res, 401, { error: "Not logged in." });
 
     if (path === "/me" && method === "GET") return send(res, 200, { me: meView(me), dbMode: dbLive() ? "supabase" : "demo" });
@@ -1546,6 +1576,7 @@ function meView(u) {
     platformsConnected: Object.keys(u.platformTokens || {}).filter((k) => u.platformTokens[k]),
     ecoPoints: u.ecoPoints || 0, tier: tierFor(u.ecoPoints || 0),
     isAdmin: isAdmin(u), isRootAdmin: isRootAdmin(u), handleLocked: isRootAdmin(u),
+    guest: !!u.guest,
   };
 }
 function itemView(it, me, owner) {
