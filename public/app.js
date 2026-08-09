@@ -1174,6 +1174,69 @@ function viewMine(){
   if(claimed.length)h+='<h2 class="st reveal">Claimed by me</h2><div id="feedList2" class="itemgrid">'+claimed.map(function(it,i){return card(it,i);}).join("")+'</div>';
   return h;
 }
+/* ---------- admin console (only rendered when me.isAdmin) ---------- */
+var adminData=null, adminLoading=false;
+function loadAdmin(){
+  if(adminLoading)return;
+  adminLoading=true;
+  api("/admin/overview").then(function(j){
+    adminLoading=false;adminData=j;render();
+  }).catch(function(e){
+    adminLoading=false;adminData={error:e.message};render();
+  });
+}
+function setConcierge(id,status){
+  var note=(document.getElementById("cnote-"+id)||{}).value||"";
+  api("/admin/concierge","POST",{id:id,status:status,note:note}).then(function(){
+    toast("Marked "+status+" — the poster has been notified.");
+    adminData=null;loadAdmin();
+  }).catch(function(e){toast(e.message,true);});
+}
+var CSTAGES=[["pending","Pending"],["arranged","Arranged"],["done","Done"]];
+function viewAdmin(){
+  if(!me.isAdmin)return '<div class="empty reveal">Not available.</div>';
+  var h='<h2 class="st reveal">Admin</h2>';
+  if(adminLoading&&!adminData)return h+'<div class="empty reveal">Loading…</div>';
+  if(!adminData)return h+'<div class="empty reveal">Loading…</div>';
+  if(adminData.error)return h+'<div class="empty reveal">'+esc(adminData.error)+'</div>';
+  var s=adminData.stats;
+  h+='<div class="statrow reveal" style="margin-bottom:18px">'+
+    [["Users",s.users],["Live listings",s.items],["Claimed",s.claimed],["Handed over",s.handedOver],
+     ["Pickup requests",s.concierge],["Open pickups",s.conciergeOpen],["Flagged",s.flagged]]
+    .map(function(x){return '<div class="statcard"><div class="sl">'+x[0]+'</div><div class="sv">'+x[1]+'</div></div>';}).join("")+
+  '</div>';
+
+  h+='<h2 class="st reveal">Council pickup queue</h2>';
+  if(!adminData.concierge.length){
+    h+='<div class="empty reveal"><span class="big">'+ICONS.truck+'</span>No pickup requests yet. Post something in a kerbside category with “Ask Dibs Concierge” ticked to create one.</div>';
+  }else{
+    h+='<div class="reveal">'+adminData.concierge.map(function(c){
+      return '<div class="cqcard">'+
+        '<div class="cqtop"><span class="cqt">'+esc(c.title)+'</span><span class="cqbadge '+esc(c.status)+'">'+esc(c.status)+'</span></div>'+
+        '<div class="cqmeta">'+esc(c.suburb||"")+(c.contact?' · '+esc(c.contact.handle):'')+(c.requestedAt?' · '+fmtDT(c.requestedAt):'')+'</div>'+
+        (c.address?'<div class="cqaddr"><span class="ic-inline">'+ICONS.locate+'</span> '+esc(c.address)+'</div>':'')+
+        (c.contact?'<div class="cqmeta">'+esc(c.contact.email)+'</div>':'')+
+        '<input id="cnote-'+esc(c.id)+'" class="cqnote" placeholder="Note (e.g. council booked for Tue)" maxlength="300" value="'+esc(c.note||"")+'">'+
+        '<div class="cqacts">'+CSTAGES.map(function(st){
+          return '<button class="pill sm'+(c.status===st[0]?" pri":"")+'" data-act="cstage" data-id="'+esc(c.id)+'|'+st[0]+'">'+st[1]+'</button>';
+        }).join("")+'</div>'+
+      '</div>';
+    }).join("")+'</div>';
+  }
+
+  h+='<h2 class="st reveal">Users <span class="hint" style="font-weight:400">('+adminData.users.length+')</span></h2>';
+  h+='<div class="tablewrap reveal"><table class="atable"><thead><tr>'+
+     '<th>Handle</th><th>Email</th><th>Suburb</th><th>Joined</th><th>Posts</th><th>Handoffs</th><th>Points</th></tr></thead><tbody>'+
+     adminData.users.map(function(u){
+       return '<tr><td><b>'+esc(u.handle)+'</b>'+(u.admin?' <span class="cqbadge done">admin</span>':'')+'</td>'+
+         '<td class="mono">'+esc(u.email||"—")+'</td>'+
+         '<td>'+esc([u.suburb,u.state].filter(Boolean).join(", ")||"—")+'</td>'+
+         '<td>'+(u.joined?fmtDT(u.joined):"—")+'</td>'+
+         '<td>'+u.posts+'</td><td>'+u.handoffs+'</td><td>'+u.ecoPoints+'</td></tr>';
+     }).join("")+'</tbody></table></div>'+
+     '<p class="hint">Visible only to administrators. Emails and pickup addresses are personal data — treat them accordingly.</p>';
+  return h;
+}
 function viewAlerts(){
   var h='<h2 class="st reveal">Notifications</h2>';
   h+=notifs.length?notifs.map(function(n,i){return '<div class="ntf reveal'+(n.read?"":" unread")+'" style="transition-delay:'+((i%10)*40)+'ms">'+esc(n.text)+'<span class="when">'+fmtDT(n.at)+'</span></div>';}).join(""):'<div class="empty reveal"><span class="big">'+ICONS.bell+'</span>Nothing yet.</div>';
@@ -1261,7 +1324,9 @@ function viewProfile(){
 
 /* ---------- render ---------- */
 function navItems(){
-  return [["feed",ICONS.all,"Shop"],["post",ICONS.plus,"Post"],["mine",ICONS.pin,"My stuff"],["alerts",ICONS.bell,"Alerts"],["profile",ICONS.user,"Profile"]];
+  var n=[["feed",ICONS.all,"Shop"],["post",ICONS.plus,"Post"],["mine",ICONS.pin,"My stuff"],["alerts",ICONS.bell,"Alerts"],["profile",ICONS.user,"Profile"]];
+  if(me&&me.isAdmin)n.push(["admin",ICONS.trophy,"Admin"]);
+  return n;
 }
 function nextPickup(){
   var d=new Date();d.setHours(0,0,0,0);
@@ -1278,7 +1343,7 @@ function render(){
   if(!me){app.innerHTML=tickerHtml()+viewAuth();bind();initScrollAnim();mountRotators();renderGoogleButton();return;}
   var next=nextPickup();
   var d=daysTo(next);var lbl=d<=0?"Today":d===1?"Tomorrow":"in "+d+" days";
-  var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():viewProfile();
+  var mainHtml=tab==="feed"?viewFeed():tab==="post"?viewPost():tab==="mine"?viewMine():tab==="alerts"?viewAlerts():tab==="admin"?viewAdmin():viewProfile();
   var bell='<button class="iconbtn" data-tab="alerts" title="Notifications" style="position:relative">'+ICONS.bell+(unread?'<span class="dock-badge js-badge">'+unread+'</span>':'')+'</button>';
   var themesw='<div class="themesw" data-act="theme" role="button" aria-label="Toggle theme"><span class="knob">'+(theme()==="dark"?ICONS.moon:ICONS.sun)+'</span></div>';
   var dock='<aside class="dock-desktop">'+
@@ -1322,7 +1387,7 @@ function bind(){
   var app=document.getElementById("app");
   app.onclick=function(e){
     var t=e.target.closest("[data-tab]");
-    if(t){tab=t.dataset.tab;if(tab==="alerts"){api("/notifications/read","POST").then(function(){unread=0;notifs.forEach(function(n){n.read=true;});render();});}if(tab==="profile"&&!leaderboard)loadLeaderboard();render();return;}
+    if(t){tab=t.dataset.tab;if(tab==="alerts"){api("/notifications/read","POST").then(function(){unread=0;notifs.forEach(function(n){n.read=true;});render();});}if(tab==="profile"&&!leaderboard)loadLeaderboard();if(tab==="admin")loadAdmin();render();return;}
     var a=e.target.closest("[data-act]");
     if(a){act(a.dataset.act,a.dataset.id,a);return;}
   };
@@ -1488,6 +1553,7 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
+  if(action==="cstage"){var p=String(id).split("|");setConcierge(p[0],p[1]);return;}
   if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";loadExternal(id,searchQ);render();scrollCatIntoView(id);return;}
   if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
   if(action==="clearfilters"){filterMin="";filterMax="";filterKeyword="";render();return;}

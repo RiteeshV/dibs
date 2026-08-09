@@ -31,6 +31,12 @@ const PLACES_KEY = process.env.GOOGLE_PLACES_API_KEY || "";
 // how many external results each source returns; Places caps itself at 20
 const EXT_LIMIT = 24;
 const UA = "Dibs/1.0 (+https://dibs-au.vercel.app)";
+/* Admin access is by email allow-list, set in the environment — never a flag on
+   the user record, so it can't be granted by anything a request can reach. */
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+function isAdmin(u) {
+  return !!(u && u.email && ADMIN_EMAILS.indexOf(String(u.email).toLowerCase()) > -1);
+}
 
 const CLAIM_HOLD_DAYS = 2;
 const FLAGS_TO_OBSERVE = 2;
@@ -999,6 +1005,76 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    /* ---- Admin console. Every route re-checks isAdmin(me): a non-admin gets 404
+       rather than 403, so the console's existence isn't advertised. ---- */
+    if (path.indexOf("/admin/") === 0) {
+      if (!isAdmin(me)) return send(res, 404, { error: "Not found." });
+
+      if (path === "/admin/overview" && method === "GET") {
+        const users = await db.list("users");
+        const items = await db.list("items");
+        const receipts = await db.list("receipts");
+        const live = items.filter((i) => !i.removed);
+        const conciergeItems = items.filter((i) => i.concierge && i.concierge.requested);
+        return send(res, 200, {
+          stats: {
+            users: users.length,
+            items: live.length,
+            claimed: live.filter((i) => i.claim).length,
+            handedOver: receipts.length,
+            concierge: conciergeItems.length,
+            conciergeOpen: conciergeItems.filter((i) => (i.concierge.status || "pending") !== "done").length,
+            flagged: live.filter((i) => (i.flags || []).length).length,
+          },
+          users: users
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+            .map((u) => ({
+              id: u.id, handle: u.handle, email: u.email, suburb: u.suburb, state: u.state || "",
+              joined: u.createdAt || null, posts: items.filter((i) => i.userId === u.id && !i.removed).length,
+              handoffs: u.handoffs || 0, ecoPoints: u.ecoPoints || 0, admin: isAdmin(u),
+            })),
+          concierge: conciergeItems
+            .sort((a, b) => (b.concierge.requestedAt || 0) - (a.concierge.requestedAt || 0))
+            .map((i) => {
+              const owner = users.filter((u) => u.id === i.userId)[0];
+              return {
+                id: i.id, title: i.title, category: i.category, suburb: i.suburb,
+                address: i.concierge.address || null,
+                requestedAt: i.concierge.requestedAt || null,
+                status: i.concierge.status || "pending",
+                note: i.concierge.note || "",
+                contact: owner ? { handle: owner.handle, email: owner.email } : null,
+              };
+            }),
+        });
+      }
+
+      /* The one thing an admin can change: how a council-pickup request is progressing. */
+      if (path === "/admin/concierge" && method === "POST") {
+        const id = String(body.id || "");
+        const status = ["pending", "arranged", "done"].indexOf(String(body.status)) > -1 ? String(body.status) : null;
+        if (!id || !status) return send(res, 400, { error: "Pick a listing and a status." });
+        const item = await db.get("items", id);
+        if (!item || !item.concierge) return send(res, 404, { error: "No concierge request on that listing." });
+        item.concierge.status = status;
+        item.concierge.note = String(body.note || "").slice(0, 300);
+        item.concierge.updatedAt = now();
+        addHistory(item, "Concierge status set to " + status + " by an administrator");
+        await db.put("items", item.id, item);
+        if (item.userId) {
+          const msg = status === "done"
+            ? "Your council pickup for “" + item.title + "” is marked complete."
+            : status === "arranged"
+              ? "Good news — council pickup for “" + item.title + "” has been arranged."
+              : "Your council pickup request for “" + item.title + "” is back in the queue.";
+          await notify(item.userId, msg, item.id);
+        }
+        return send(res, 200, { ok: true, status });
+      }
+
+      return send(res, 404, { error: "Not found." });
+    }
+
     if (path === "/search/price-index" && method === "GET") {
       const cat = String(url.searchParams.get("cat") || "");
       const code = url.searchParams.get("scope") === "all" ? "50" : (CPI_REGION[me.state] || "50");
@@ -1286,6 +1362,7 @@ function meView(u) {
     trusted: (u.handoffs || 0) >= 3, avgRating: avg,
     platformsConnected: Object.keys(u.platformTokens || {}).filter((k) => u.platformTokens[k]),
     ecoPoints: u.ecoPoints || 0, tier: tierFor(u.ecoPoints || 0),
+    isAdmin: isAdmin(u),
   };
 }
 function itemView(it, me, owner) {
