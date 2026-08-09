@@ -335,6 +335,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .wdelta{font-size:11.5px;font-weight:700;color:var(--soft);margin:6px 0 9px}
 .wdelta.up{color:var(--amber)}
 .wdelta.down{color:var(--teal)}
+/* sign-up prompt filling the guest sidebar, where the truck banner sits for members */
+.gjoin{margin-top:20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card2)}
+.gjt{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:.5px;color:var(--ink);margin:0 0 6px}
+.gjd{font-size:11.5px;line-height:1.5;color:var(--soft);margin:0 0 11px}
 .note.guestbar{border-color:var(--teal);color:var(--ink);background:var(--tealglow)}
 .note.guestbar .glink{font-weight:800;color:var(--teal);cursor:pointer;text-decoration:underline}
 .cqcard{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--card);margin-bottom:10px}

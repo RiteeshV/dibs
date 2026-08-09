@@ -1144,7 +1144,13 @@ function externalPanelHtml(){
   }else if(extResults&&extResults.mode==="services"){
     var swhere=feedScope==="all"?"across Australia":("around "+esc(me.suburb));
     if(!extResults.items.length){
-      inner='<p class="hint" style="margin:0">No listed trades or services '+swhere+' yet — try All Australia, or a keyword like “cleaning”.</p>';
+      /* OpenStreetMap's public query service is free and frequently overloaded;
+         say so plainly and hand over the outbound links rather than showing an
+         empty box that looks like the app is broken. */
+      inner='<p class="hint" style="margin:0 0 10px">Local business data is refreshing and should be back shortly — the open directory this uses is a free shared service and is busy right now. In the meantime:</p>'+
+        '<div class="ddelsewhere" style="padding:0">'+(EXT_LINK_SITES.services||[]).map(function(s){
+          return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
+        }).join("")+'</div>';
     }else{
       var ssrc=extResults.items[0].source;
       inner='<p class="hint" style="margin:0 0 10px">Local businesses '+swhere+', via '+esc(ssrc)+'.</p>'+
@@ -1511,8 +1517,15 @@ function render(){
       return '<button data-tab="'+n[0]+'" class="'+(tab===n[0]?"on":"")+'"><span class="ic">'+n[1]+'</span>'+n[2]+
       (n[0]==="alerts"?'<span class="bdg js-badge" style="display:'+(unread?"":"none")+'">'+unread+'</span>':"")+'</button>';
     }).join("")+'</div>'+
-    '<div class="banner" style="margin-top:20px;flex-direction:column;align-items:flex-start;gap:3px"><span class="lbl">Next truck day</span><span class="cnt">'+WD[me.pickupWeekday].slice(0,3)+' · '+lbl+'</span></div>'+
-    '<div class="dfoot">Signed in as <b>'+esc(me.handle)+'</b><br><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a></div>'+
+    /* A guest has no council collection day — that is set from a real account's
+       suburb — so the truck banner would be inventing one. They get the reason
+       to sign up instead. */
+    (me.guest
+      ? '<div class="gjoin"><p class="gjt">Like what you see?</p>'+
+        '<p class="gjd">An account is free. Post something, call dibs on a find nearby, and get your own council collection day.</p>'+
+        '<button class="pill pri block" data-act="'+(adminPreview?"exitpreview":"switch-auth")+'">'+(adminPreview?"Back to your account":"Create a free account")+'</button></div>'
+      : '<div class="banner" style="margin-top:20px;flex-direction:column;align-items:flex-start;gap:3px"><span class="lbl">Next truck day</span><span class="cnt">'+WD[me.pickupWeekday].slice(0,3)+' · '+lbl+'</span></div>')+
+    '<div class="dfoot">'+(me.guest?'Browsing as a <b>guest</b>':'Signed in as <b>'+esc(me.handle)+'</b>')+'<br><a href="/privacy" target="_blank">Privacy</a> · <a href="/terms" target="_blank">Terms</a></div>'+
   '</aside>';
   var mtop='<div class="mtop"><img src="/logo.svg" alt=""><span class="nm">'+APP+'</span>'+gpv+bell+themesw+'</div>';
   var dtop='<div class="dtopbar"><div class="right">'+gpv+bell+themesw+'</div></div>';

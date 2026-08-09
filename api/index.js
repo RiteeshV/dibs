@@ -592,26 +592,39 @@ async function searchServicesOSM(place, query) {
   // Overpass is a free shared service: it returns 429 when busy and 504 under
   // load, so a single attempt against one host loses results for whole suburbs.
   // Try the mirrors in turn before giving up.
+  /* osm.ch was removed: it is the Swiss regional instance, so it answers in a
+     second with zero Australian data and would always win a race with nothing. */
   const OVERPASS_HOSTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
   ];
-  let j = null, lastErr = null;
-  for (const host of OVERPASS_HOSTS) {
-    try {
-      const res = await fetch(host, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
-        body: "data=" + encodeURIComponent(ql),
-        signal: AbortSignal.timeout(9000),
-      });
-      if (!res.ok) { lastErr = new Error("Overpass " + res.status + " from " + host); continue; }
-      j = await res.json();
-      break;
-    } catch (e) { lastErr = e; }
+  /* Raced, not tried in turn. Sequential attempts meant a slow first mirror
+     pushed the whole request past twenty seconds before the second was even
+     attempted — the visitor just watched a spinner. Whichever host answers
+     first wins; the others are abandoned. */
+  const attempt = async (host) => {
+    const res = await fetch(host, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
+      body: "data=" + encodeURIComponent(ql),
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!res.ok) throw new Error("Overpass " + res.status + " from " + host);
+    const body = await res.json();
+    // an empty answer loses the race — a mirror with the wrong region answers
+    // fast and blank, and would otherwise beat a slower host that has the data
+    if (!body || !Array.isArray(body.elements) || !body.elements.length) {
+      throw new Error("Overpass returned nothing from " + host);
+    }
+    return body;
+  };
+  let j;
+  try {
+    j = await Promise.any(OVERPASS_HOSTS.map(attempt));
+  } catch (e) {
+    throw new Error("Overpass unavailable on all mirrors");
   }
-  if (!j) throw lastErr || new Error("Overpass unavailable");
   const q = (query || "").toLowerCase();
   const rows = (j.elements || [])
     .filter((el) => el.tags && el.tags.name)
@@ -671,15 +684,43 @@ async function searchServicesPlaces(place, query) {
 }
 /* Overpass is slow and rate-limited, and a suburb's trades barely change — cache
    the unfiltered result per place and filter in memory. */
+/* Cached in the database, not in memory. Serverless instances are recycled
+   constantly, so a per-process cache meant nearly every visitor paid the full
+   geocode + Overpass round trip — several seconds, and nothing at all when
+   Overpass was busy. Stored per place, shared by everyone, and survives a cold
+   start. A stale entry is still served if the refresh fails: last week's list
+   of local mechanics beats an empty panel. */
 const svcCache = {};
-const SVC_TTL = 60 * 60 * 1000;
+const SVC_TTL = 7 * 24 * 60 * 60 * 1000;
+async function readSvcCache(key) {
+  if (svcCache[key]) return svcCache[key];
+  try {
+    const row = await db.get("meta", "svc:" + key);
+    if (row && Array.isArray(row.rows)) { svcCache[key] = row; return row; }
+  } catch { /* cache miss is not an error */ }
+  return null;
+}
 async function searchServicesOSMCached(place, query) {
   const key = place.toLowerCase();
-  const hit = svcCache[key];
+  const hit = await readSvcCache(key);
   if (hit && now() - hit.at < SVC_TTL) return filterServices(hit.rows, query);
-  const rows = await searchServicesOSM(place, "");
-  if (rows.length) svcCache[key] = { rows, at: now() };
-  return filterServices(rows, query);
+  try {
+    const rows = await searchServicesOSM(place, "");
+    if (rows.length) {
+      const entry = { id: "svc:" + key, rows, at: now() };
+      svcCache[key] = entry;
+      db.put("meta", entry.id, entry).catch(() => {}); // don't make the visitor wait on the write
+      return filterServices(rows, query);
+    }
+    if (hit) return filterServices(hit.rows, query);
+    return [];
+  } catch (e) {
+    if (hit) {
+      console.warn("Overpass refresh failed, serving cached services:", e.message);
+      return filterServices(hit.rows, query);
+    }
+    throw e;
+  }
 }
 function filterServices(rows, query) {
   const q = (query || "").toLowerCase().trim();
@@ -1037,6 +1078,26 @@ module.exports = async function handler(req, res) {
       const cronSecret = process.env.CRON_SECRET || "";
       if (cronSecret && req.headers.authorization !== "Bearer " + cronSecret)
         return send(res, 401, { error: "Unauthorized." });
+      /* Refresh the services cache out of band. Overpass is a free shared
+         service that regularly answers 504 under load, so it must never be
+         something a visitor waits on — the cron pays that cost instead, for the
+         suburbs people actually use. */
+      if (url.searchParams.get("services") === "1") {
+        const users = await db.list("users");
+        const places = [...new Set(users.map((u) => [u.suburb, u.state].filter(Boolean).join(", ")).filter(Boolean))].slice(0, 12);
+        const done = [];
+        for (const place of places) {
+          try {
+            const rows = await searchServicesOSM(place, "");
+            if (rows.length) {
+              await db.put("meta", "svc:" + place.toLowerCase(), { id: "svc:" + place.toLowerCase(), rows, at: now() });
+              done.push(place + ":" + rows.length);
+            } else done.push(place + ":0");
+          } catch (e) { done.push(place + ":failed"); }
+        }
+        return send(res, 200, { ok: true, warmed: done });
+      }
+
       const probeId = "keepwarm";
       dbDownUntil = 0; // clear any cooldown so this always probes the real database
       // Opt-in only: the daily cron shouldn't spend third-party quota on health checks.
