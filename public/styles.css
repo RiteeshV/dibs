@@ -312,6 +312,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .statcard .sc.down{color:var(--teal)}
 .statcard .sm{font-size:11px;color:var(--faint);margin-top:5px}
 /* ---------- admin console ---------- */
+.newchip.sample{background:var(--amber);color:#fff}
 .cqcard{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--card);margin-bottom:10px}
 .cqtop{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .cqt{font-size:13.5px;font-weight:700;color:var(--ink)}

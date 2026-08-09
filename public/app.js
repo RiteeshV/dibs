@@ -757,7 +757,7 @@ function card(it,idx){
     '<div class="cmedia" data-act="open" data-id="'+it.id+'">'+
       mediaThumb(it)+
       '<span class="stamp '+st[1]+'">'+esc(st[0])+'</span>'+
-      (isNew?'<span class="newchip">New</span>':"")+
+      (it.sample?'<span class="newchip sample">Sample</span>':isNew?'<span class="newchip">New</span>':"")+
       '<span class="pricebadge'+(it.price>0?"":" free")+'">'+(it.price>0?money(it.price):"Free")+'</span>'+
     '</div>'+
     '<div class="cbody" data-act="open" data-id="'+it.id+'">'+
@@ -1224,17 +1224,50 @@ function viewAdmin(){
     }).join("")+'</div>';
   }
 
+  h+='<div class="cqacts reveal" style="margin:-6px 0 18px">'+
+     '<button class="pill sm" data-act="seed" data-id="add">Add sample listings</button>'+
+     '<button class="pill gh sm" data-act="seed" data-id="remove">Remove samples</button></div>';
+
+  h+='<h2 class="st reveal">Flagged listings</h2>';
+  if(!adminData.flagged||!adminData.flagged.length){
+    h+='<div class="empty reveal"><span class="big">'+ICONS.leaf+'</span>Nothing flagged. Clean house.</div>';
+  }else{
+    h+='<div class="reveal">'+adminData.flagged.map(function(f){
+      return '<div class="cqcard">'+
+        '<div class="cqtop"><span class="cqt">'+esc(f.title)+'</span>'+
+          '<span class="cqbadge '+(f.observed?"pending":"")+'">'+f.count+' flag'+(f.count===1?"":"s")+(f.observed?" · hidden":"")+'</span></div>'+
+        '<div class="cqmeta">'+esc([f.suburb,f.poster].filter(Boolean).join(" · "))+'</div>'+
+        '<div class="cqmeta">Reasons: '+esc(f.reasons.join(", "))+'</div>'+
+        '<div class="cqacts">'+
+          '<button class="pill sm" data-act="mod" data-id="'+esc(f.id)+'|clear">Keep live</button>'+
+          '<button class="pill sm dgr" data-act="mod" data-id="'+esc(f.id)+'|remove">Remove listing</button>'+
+        '</div>'+
+      '</div>';
+    }).join("")+'</div>';
+  }
+
   h+='<h2 class="st reveal">Users <span class="hint" style="font-weight:400">('+adminData.users.length+')</span></h2>';
+  h+='<div class="cqacts reveal" style="margin-bottom:10px">'+
+     '<a class="pill gh sm" href="/api/admin/export?what=users">Export users CSV</a>'+
+     '<a class="pill gh sm" href="/api/admin/export?what=concierge">Export pickups CSV</a></div>';
   h+='<div class="tablewrap reveal"><table class="atable"><thead><tr>'+
-     '<th>Handle</th><th>Email</th><th>Suburb</th><th>Joined</th><th>Posts</th><th>Handoffs</th><th>Points</th></tr></thead><tbody>'+
+     '<th>Handle</th><th>Email</th><th>Suburb</th><th>Joined</th><th>Posts</th><th>Handoffs</th><th>Points</th><th>Role</th></tr></thead><tbody>'+
      adminData.users.map(function(u){
-       return '<tr><td><b>'+esc(u.handle)+'</b>'+(u.admin?' <span class="cqbadge done">admin</span>':'')+'</td>'+
+       var role=u.root?'<span class="cqbadge done">owner</span>':u.coAdmin?'<span class="cqbadge arranged">co-admin</span>':'<span class="hint">member</span>';
+       var ctl="";
+       if(me.isRootAdmin&&!u.root){
+         ctl='<button class="pill sm'+(u.coAdmin?"":" pri")+'" data-act="role" data-id="'+esc(u.id)+'|'+(u.coAdmin?"0":"1")+'">'+
+             (u.coAdmin?"Revoke":"Make co-admin")+'</button>';
+       }
+       return '<tr><td><b>'+esc(u.handle)+'</b></td>'+
          '<td class="mono">'+esc(u.email||"—")+'</td>'+
          '<td>'+esc([u.suburb,u.state].filter(Boolean).join(", ")||"—")+'</td>'+
          '<td>'+(u.joined?fmtDT(u.joined):"—")+'</td>'+
-         '<td>'+u.posts+'</td><td>'+u.handoffs+'</td><td>'+u.ecoPoints+'</td></tr>';
+         '<td>'+u.posts+'</td><td>'+u.handoffs+'</td><td>'+u.ecoPoints+'</td>'+
+         '<td>'+role+(ctl?'<div style="margin-top:6px">'+ctl+'</div>':'')+'</td></tr>';
      }).join("")+'</tbody></table></div>'+
-     '<p class="hint">Visible only to administrators. Emails and pickup addresses are personal data — treat them accordingly.</p>';
+     '<p class="hint">Visible only to administrators. Emails and pickup addresses are personal data — treat them accordingly.'+
+     (me.isRootAdmin?' Only the owner account can grant or revoke co-admins.':' Co-admins can moderate but cannot change roles.')+'</p>';
   return h;
 }
 function viewAlerts(){
@@ -1554,6 +1587,30 @@ function act(action,id,el){
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
   if(action==="cstage"){var p=String(id).split("|");setConcierge(p[0],p[1]);return;}
+  if(action==="mod"){
+    var m=String(id).split("|");
+    if(m[1]==="remove"&&!confirm("Remove this listing? The poster will be notified."))return;
+    api("/admin/moderate","POST",{id:m[0],action:m[1]}).then(function(){
+      toast(m[1]==="clear"?"Flags cleared — listing stays live.":"Listing removed.");
+      adminData=null;loadAdmin();
+    }).catch(function(e){toast(e.message,true);});
+    return;
+  }
+  if(action==="seed"){
+    api("/admin/seed","POST",{action:id}).then(function(j){
+      toast(id==="add"?("Added "+j.created+" sample listings — they're badged Sample."):("Removed "+j.removed+" samples."));
+      adminData=null;loadAdmin();refresh();
+    }).catch(function(e){toast(e.message,true);});
+    return;
+  }
+  if(action==="role"){
+    var r=String(id).split("|");
+    api("/admin/role","POST",{id:r[0],coAdmin:r[1]==="1"}).then(function(j){
+      toast(j.coAdmin?"Co-admin access granted.":"Co-admin access revoked.");
+      adminData=null;loadAdmin();
+    }).catch(function(e){toast(e.message,true);});
+    return;
+  }
   if(action==="catf"){catFilter=id;filterMin="";filterMax="";filterKeyword="";loadExternal(id,searchQ);render();scrollCatIntoView(id);return;}
   if(action==="togglecats"){showAllCats=!showAllCats;render();return;}
   if(action==="clearfilters"){filterMin="";filterMax="";filterKeyword="";render();return;}

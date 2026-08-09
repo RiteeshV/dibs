@@ -34,8 +34,20 @@ const UA = "Dibs/1.0 (+https://dibs-au.vercel.app)";
 /* Admin access is by email allow-list, set in the environment — never a flag on
    the user record, so it can't be granted by anything a request can reach. */
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-function isAdmin(u) {
+const ADMIN_HANDLE = "Admin";
+/* Root admins come from the environment and cannot be demoted through the app.
+   Co-admins are a flag on the user record that only a root admin can set — so
+   the privilege ladder always terminates outside anything a request can reach. */
+function isRootAdmin(u) {
   return !!(u && u.email && ADMIN_EMAILS.indexOf(String(u.email).toLowerCase()) > -1);
+}
+function isAdmin(u) {
+  return isRootAdmin(u) || !!(u && u.coAdmin);
+}
+/* Root admins are always shown as "Admin" — the handle is derived, never stored,
+   so it can't drift and can't be renamed from the profile screen. */
+function displayHandle(u) {
+  return isRootAdmin(u) ? ADMIN_HANDLE : u.handle;
 }
 
 const CLAIM_HOLD_DAYS = 2;
@@ -773,7 +785,7 @@ async function probeExternalSources() {
 
 /* Public view of a user (never leaks email/phone/real identity) */
 function publicUser(u) {
-  return { handle: u.handle, suburb: u.suburb, trusted: (u.handoffs || 0) >= 3 };
+  return { handle: displayHandle(u), suburb: u.suburb, trusted: (u.handoffs || 0) >= 3, admin: isAdmin(u) };
 }
 
 /* Categories with no council-truck mechanic — cars, property, jobs and services don't get put on the kerb */
@@ -1029,10 +1041,23 @@ module.exports = async function handler(req, res) {
           users: users
             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
             .map((u) => ({
-              id: u.id, handle: u.handle, email: u.email, suburb: u.suburb, state: u.state || "",
+              id: u.id, handle: displayHandle(u), email: u.email, suburb: u.suburb, state: u.state || "",
               joined: u.createdAt || null, posts: items.filter((i) => i.userId === u.id && !i.removed).length,
-              handoffs: u.handoffs || 0, ecoPoints: u.ecoPoints || 0, admin: isAdmin(u),
+              handoffs: u.handoffs || 0, ecoPoints: u.ecoPoints || 0,
+              admin: isAdmin(u), root: isRootAdmin(u), coAdmin: !!u.coAdmin,
             })),
+          flagged: live
+            .filter((i) => (i.flags || []).length)
+            .sort((a, b) => b.flags.length - a.flags.length)
+            .map((i) => {
+              const owner = users.filter((u) => u.id === i.userId)[0];
+              return {
+                id: i.id, title: i.title, category: i.category, suburb: i.suburb,
+                count: i.flags.length, observed: underObservation(i),
+                reasons: i.flags.map((f) => f.reason),
+                poster: owner ? displayHandle(owner) : null,
+              };
+            }),
           concierge: conciergeItems
             .sort((a, b) => (b.concierge.requestedAt || 0) - (a.concierge.requestedAt || 0))
             .map((i) => {
@@ -1043,7 +1068,7 @@ module.exports = async function handler(req, res) {
                 requestedAt: i.concierge.requestedAt || null,
                 status: i.concierge.status || "pending",
                 note: i.concierge.note || "",
-                contact: owner ? { handle: owner.handle, email: owner.email } : null,
+                contact: owner ? { handle: displayHandle(owner), email: owner.email } : null,
               };
             }),
         });
@@ -1070,6 +1095,116 @@ module.exports = async function handler(req, res) {
           await notify(item.userId, msg, item.id);
         }
         return send(res, 200, { ok: true, status });
+      }
+
+      /* Only a root admin can change who is an admin. A co-admin can moderate
+         but cannot promote anyone, including themselves. */
+      if (path === "/admin/role" && method === "POST") {
+        if (!isRootAdmin(me)) return send(res, 403, { error: "Only the owner account can change admin roles." });
+        const target = await db.get("users", String(body.id || ""));
+        if (!target) return send(res, 404, { error: "No such user." });
+        if (isRootAdmin(target)) return send(res, 400, { error: "The owner account is set in the environment and can't be changed here." });
+        target.coAdmin = !!body.coAdmin;
+        await db.put("users", target.id, target);
+        await notify(target.id, target.coAdmin
+          ? "You've been made a co-administrator of Dibs."
+          : "Your co-administrator access has been removed.");
+        return send(res, 200, { ok: true, coAdmin: target.coAdmin });
+      }
+
+      /* Moderation: clear the flags and keep it live, or take it down. */
+      if (path === "/admin/moderate" && method === "POST") {
+        const item = await db.get("items", String(body.id || ""));
+        if (!item) return send(res, 404, { error: "No such listing." });
+        const action = String(body.action || "");
+        if (action === "clear") {
+          item.flags = [];
+          addHistory(item, "Flags cleared by an administrator — listing kept live");
+          await db.put("items", item.id, item);
+          if (item.userId) await notify(item.userId, "“" + item.title + "” was reviewed and stays live.", item.id);
+          return send(res, 200, { ok: true, action });
+        }
+        if (action === "remove") {
+          item.removed = true;
+          item.removedAt = now();
+          addHistory(item, "Removed by an administrator after review");
+          await db.put("items", item.id, item);
+          if (item.userId) await notify(item.userId, "“" + item.title + "” was removed after review.", item.id);
+          return send(res, 200, { ok: true, action });
+        }
+        return send(res, 400, { error: "Unknown moderation action." });
+      }
+
+      /* Demo listings for a quiet suburb. They are posted by the admin account
+         and carry sample:true so the card can badge them — a marketplace that
+         silently invents neighbour listings is lying to its users. One call
+         removes them all again. */
+      if (path === "/admin/seed" && method === "POST") {
+        const items = await db.list("items");
+        if (String(body.action) === "remove") {
+          let n = 0;
+          for (const i of items.filter((x) => x.sample && !x.removed)) {
+            i.removed = true; i.removedAt = now();
+            await db.put("items", i.id, i); n++;
+          }
+          return send(res, 200, { ok: true, removed: n });
+        }
+        const SAMPLES = [
+          ["Two-seater sofa, grey", "furniture", 0, "Clean, one small mark on the arm."],
+          ["Kids' bike, 16 inch", "family", 40, "Outgrown. Tyres hold air, brakes fine."],
+          ["Box of paperbacks", "books", 0, "Crime and sci-fi, about thirty of them."],
+          ["Microwave, working", "kitchen", 25, "Upgrading. Turntable included."],
+          ["Pot plants, assorted", "garden", 0, "Succulents and a small fern."],
+          ["Desk lamp", "homegoods", 10, "Adjustable arm, warm globe."],
+        ];
+        const made = [];
+        for (const [title, category, price, desc] of SAMPLES) {
+          const item = {
+            id: uid("i"), userId: me.id, sample: true,
+            title: title, desc: desc, category,
+            media: [], platforms: [], price: price || null, concierge: null,
+            postedAt: now() - Math.floor(Math.random() * 3 * 86400000),
+            status: "available", claim: null, flags: [], rating: null, history: [],
+          };
+          addHistory(item, "Sample listing created by an administrator");
+          await db.put("items", item.id, item);
+          made.push(item.id);
+        }
+        return send(res, 200, { ok: true, created: made.length });
+      }
+
+      /* CSV export — text/csv with a filename, so browsers download it. */
+      if (path === "/admin/export" && method === "GET") {
+        const what = url.searchParams.get("what") === "concierge" ? "concierge" : "users";
+        const users = await db.list("users");
+        const items = await db.list("items");
+        let rows;
+        if (what === "users") {
+          rows = [["handle", "email", "suburb", "state", "joined", "posts", "handoffs", "ecoPoints", "role"]];
+          for (const u of users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))) {
+            rows.push([displayHandle(u), u.email || "", u.suburb || "", u.state || "",
+              u.createdAt ? new Date(u.createdAt).toISOString() : "",
+              items.filter((i) => i.userId === u.id && !i.removed).length,
+              u.handoffs || 0, u.ecoPoints || 0,
+              isRootAdmin(u) ? "owner" : u.coAdmin ? "co-admin" : "member"]);
+          }
+        } else {
+          rows = [["listing", "category", "suburb", "address", "requested", "status", "note", "posterHandle", "posterEmail"]];
+          for (const i of items.filter((x) => x.concierge && x.concierge.requested)) {
+            const owner = users.filter((u) => u.id === i.userId)[0];
+            rows.push([i.title || "", i.category || "", i.suburb || "", i.concierge.address || "",
+              i.concierge.requestedAt ? new Date(i.concierge.requestedAt).toISOString() : "",
+              i.concierge.status || "pending", i.concierge.note || "",
+              owner ? displayHandle(owner) : "", owner ? owner.email || "" : ""]);
+          }
+        }
+        // quote every field and double any embedded quotes — titles and notes are free text
+        const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+        res.writeHead(200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="dibs-' + what + '-' + new Date().toISOString().slice(0, 10) + '.csv"',
+        });
+        return res.end(csv);
       }
 
       return send(res, 404, { error: "Not found." });
@@ -1162,6 +1297,9 @@ module.exports = async function handler(req, res) {
       const byId = Object.fromEntries(users.map((u) => [u.id, u]));
       for (const it of items) if (await resolveItem(it, byId[it.userId])) await db.put("items", it.id, it);
       const out = items
+        // removed is set by admin moderation and by clearing samples — it hides
+        // the listing from everyone, its owner included
+        .filter((it) => !it.removed)
         .filter((it) => it.userId === me.id || !underObservation(it))
         .map((it) => itemView(it, me, byId[it.userId]))
         .sort((a, b) => b.postedAt - a.postedAt);
@@ -1209,7 +1347,9 @@ module.exports = async function handler(req, res) {
     const m = path.match(/^\/items\/([^/]+)(?:\/([a-z]+))?$/);
     if (m) {
       const item = await db.get("items", m[1]);
-      if (!item) return send(res, 404, { error: "That listing no longer exists." });
+      // a removed listing is gone as far as the rest of the app is concerned,
+      // otherwise a direct link would still open something moderation took down
+      if (!item || item.removed) return send(res, 404, { error: "That listing no longer exists." });
       const owner = await db.get("users", item.userId);
       if (await resolveItem(item, owner)) await db.put("items", item.id, item);
       const action = m[2];
@@ -1357,19 +1497,19 @@ module.exports = async function handler(req, res) {
 function meView(u) {
   const avg = u.ratings && u.ratings.length ? u.ratings.reduce((a, b) => a + b, 0) / u.ratings.length : null;
   return {
-    id: u.id, email: u.email, handle: u.handle, name: u.name, suburb: u.suburb, state: u.state || "NSW",
+    id: u.id, email: u.email, handle: displayHandle(u), name: u.name, suburb: u.suburb, state: u.state || "NSW",
     pickupWeekday: u.pickupWeekday, handoffs: u.handoffs || 0, truckSaved: u.truckSaved || 0,
     trusted: (u.handoffs || 0) >= 3, avgRating: avg,
     platformsConnected: Object.keys(u.platformTokens || {}).filter((k) => u.platformTokens[k]),
     ecoPoints: u.ecoPoints || 0, tier: tierFor(u.ecoPoints || 0),
-    isAdmin: isAdmin(u),
+    isAdmin: isAdmin(u), isRootAdmin: isRootAdmin(u), handleLocked: isRootAdmin(u),
   };
 }
 function itemView(it, me, owner) {
   const mine = it.userId === me.id;
   const ownerWd = owner ? owner.pickupWeekday : 3;
   return {
-    id: it.id, title: it.title, desc: it.desc, category: it.category,
+    id: it.id, title: it.title, desc: it.desc, category: it.category, sample: !!it.sample,
     media: it.media || [], platforms: it.platforms || [], price: it.price || 0,
     postedAt: it.postedAt, status: it.status,
     pickupAt: nextWeekdayOnOrAfter(it.postedAt + 86400000, ownerWd),
