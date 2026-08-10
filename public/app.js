@@ -515,6 +515,34 @@ function priceIndexHtml(cat){
   '</div>';
 }
 
+/* ---------- jobs: paging ----------
+   "More jobs" appends the next page rather than replacing what is on screen, so
+   nothing you were reading disappears under you. */
+var jobsPage=1, jobsMore=false, jobsLoadingMore=false;
+function loadMoreJobs(){
+  if(jobsLoadingMore||!jobsMore)return;
+  jobsLoadingMore=true;repaintExternal();
+  var jq=(filterKeyword||"").trim();
+  api("/search/jobs?page="+(jobsPage+1)+"&scope="+(feedScope==="all"?"all":"suburb")+(jq?"&q="+encodeURIComponent(jq):"")).then(function(j){
+    var fresh=j.results||[];
+    var seen={};
+    ((extResults&&extResults.items)||[]).forEach(function(x){seen[(x.title+"|"+(x.company||"")).toLowerCase()]=1;});
+    var added=fresh.filter(function(x){return !seen[(x.title+"|"+(x.company||"")).toLowerCase()];});
+    jobsPage=j.page||jobsPage+1;
+    jobsMore=!!j.more&&added.length>0;
+    jobsLoadingMore=false;
+    if(extResults&&extResults.mode==="jobs"){
+      extResults.items=extResults.items.concat(added);
+      if(extKey)extCache[extKey]=extResults.items;
+    }
+    if(!added.length)toast("That's everything the job feeds have for this search.");
+    repaintExternal();
+  }).catch(function(e){
+    jobsLoadingMore=false;jobsMore=false;repaintExternal();
+    toast(e.message,true);
+  });
+}
+
 /* ---------- jobs: insight strip + career guides ---------- */
 var jobInsight=null, jobInsightKey=null;
 function initialsFor(s){
@@ -1222,6 +1250,11 @@ function externalPanelHtml(){
           '</div>'+
         '</a>';
       }).join("")+'</div>'+
+      (jobsMore
+        ? '<div class="morewrap"><button class="pill'+(jobsLoadingMore?"":" pri")+'" data-act="morejobs"'+(jobsLoadingMore?" disabled":"")+'>'+
+          (jobsLoadingMore?"Loading…":"More jobs")+'</button>'+
+          '<span class="morehint">Showing '+extResults.items.length+'</span></div>'
+        : '<div class="morewrap"><span class="morehint">Showing all '+extResults.items.length+' we could find</span></div>')+
       jobGuidesHtml()+
       '<div class="ddelsewhere" style="padding:10px 0 0">'+(EXT_LINK_SITES.jobs||[]).map(function(s){
         return '<a class="pill gh sm" style="text-decoration:none" href="'+esc(s[1])+'" target="_blank" rel="noopener">'+esc(s[0])+' <span class="ic-inline">'+ICONS.external+'</span></a>';
@@ -1379,13 +1412,28 @@ function viewAdmin(){
      '<th>Handle</th><th>Email</th><th>Suburb</th><th>Joined</th><th>Posts</th><th>Handoffs</th><th>Points</th><th>Role</th></tr></thead><tbody>'+
      adminData.users.map(function(u){
        var role=u.root?'<span class="cqbadge done">owner</span>':u.coAdmin?'<span class="cqbadge arranged">co-admin</span>':'<span class="hint">member</span>';
+       if(u.suspended){
+         role=u.suspended.permanent
+           ? '<span class="cqbadge banned">banned</span>'
+           : '<span class="cqbadge pending">suspended</span>';
+       }
        var ctl="";
        if(me.isRootAdmin&&!u.root){
          ctl='<button class="pill sm'+(u.coAdmin?"":" pri")+'" data-act="role" data-id="'+esc(u.id)+'|'+(u.coAdmin?"0":"1")+'">'+
              (u.coAdmin?"Revoke":"Make co-admin")+'</button>';
        }
+       /* suspend, ban or restore — never delete: removing the record would orphan
+          their listings and destroy the trail showing why this happened */
+       if(!u.root&&u.id!==me.id){
+         ctl+=(ctl?" ":"")+(u.suspended
+           ? '<button class="pill sm" data-act="ustatus" data-id="'+esc(u.id)+'|restore">Restore</button>'
+           : '<button class="pill sm" data-act="ustatus" data-id="'+esc(u.id)+'|suspend">Suspend 7d</button>'+
+             '<button class="pill sm dgr" data-act="ustatus" data-id="'+esc(u.id)+'|ban">Ban</button>');
+       }
        return '<tr><td><b>'+esc(u.handle)+'</b></td>'+
-         '<td class="mono">'+esc(u.email||"—")+'</td>'+
+         '<td class="mono">'+esc(u.email||"—")+
+           (u.suspended?'<div class="susnote">'+(u.suspended.permanent?"Banned":"Until "+fmtDT(u.suspended.until))+
+             (u.suspended.reason?' — '+esc(u.suspended.reason):'')+'</div>':'')+'</td>'+
          '<td>'+esc([u.suburb,u.state].filter(Boolean).join(", ")||"—")+'</td>'+
          '<td>'+(u.joined?fmtDT(u.joined):"—")+'</td>'+
          '<td>'+u.posts+'</td><td>'+u.handoffs+'</td><td>'+u.ecoPoints+'</td>'+
@@ -1724,6 +1772,7 @@ function act(action,id,el){
   if(action==="apple-soon"){toast("Apple Sign-In is coming soon — it needs a paid Apple Developer account. Use email or Google for now.",true);return;}
   if(action==="theme"){localStorage.setItem("dibs-theme",theme()==="dark"?"light":"dark");applyTheme();render();return;}
   if(action==="scope"){feedScope=id;render();return;}
+  if(action==="morejobs"){loadMoreJobs();return;}
   if(action==="watch"){toggleWatch(id);return;}
   if(action==="guest"){enterGuest();return;}
   if(action==="guestpreview"){adminPreview=true;enterGuest();return;}
@@ -1752,6 +1801,18 @@ function act(action,id,el){
     api("/admin/seed","POST",{action:id}).then(function(j){
       toast(id==="add"?("Added "+j.created+" sample listings — they're badged Sample."):("Removed "+j.removed+" samples."));
       adminData=null;loadAdmin();refresh();
+    }).catch(function(e){toast(e.message,true);});
+    return;
+  }
+  if(action==="ustatus"){
+    var u=String(id).split("|"), act=u[1];
+    var verb=act==="ban"?"permanently ban":act==="suspend"?"suspend for 7 days":"restore";
+    if(act!=="restore"&&!confirm("Really "+verb+" this account? Their live listings will be removed and they'll be notified."))return;
+    var reason=act==="restore"?"":(prompt("Reason (optional, shown to them):")||"");
+    api("/admin/user-status","POST",{id:u[0],action:act,reason:reason,days:7}).then(function(j){
+      toast(act==="restore"?"Account restored."
+        :(act==="ban"?"Account banned":"Account suspended for 7 days")+(j.listingsPulled?" — "+j.listingsPulled+" listing(s) removed.":"."));
+      adminData=null;loadAdmin();
     }).catch(function(e){toast(e.message,true);});
     return;
   }

@@ -350,3 +350,68 @@ describe("listing photos", () => {
     assert.equal(r.status, 400);
   });
 });
+
+describe("suspending and banning accounts", () => {
+  test("a suspension pulls their listings and blocks them at login", async () => {
+    const owner = client();
+    await owner("/login", "POST", { email: "owner@test.local", password: "test-password-123" });
+
+    const bad = client();
+    await signUp(bad, "suspend-me@test.local");
+    await bad("/items", "POST", { title: "Questionable amp", category: "electronics" });
+
+    const id = (await owner("/admin/overview")).json.users.find((u) => u.email === "suspend-me@test.local").id;
+    const r = await owner("/admin/user-status", "POST", { id, action: "suspend", reason: "Reported repeatedly", days: 7 });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.listingsPulled, 1, "a suspended account should not keep selling");
+
+    const row = (await owner("/admin/overview")).json.users.find((u) => u.id === id);
+    assert.equal(row.suspended.permanent, false);
+    assert.equal(row.suspended.reason, "Reported repeatedly");
+
+    const retry = client();
+    const login = await retry("/login", "POST", { email: "suspend-me@test.local", password: "test-password-123" });
+    assert.equal(login.status, 403, "refuse at the door, not with a session that 403s everywhere");
+    assert.match(login.json.error, /suspended until/i);
+  });
+
+  test("a ban is permanent and says so", async () => {
+    const owner = client();
+    await owner("/login", "POST", { email: "owner@test.local", password: "test-password-123" });
+    const bad = client();
+    await signUp(bad, "ban-me@test.local");
+    const id = (await owner("/admin/overview")).json.users.find((u) => u.email === "ban-me@test.local").id;
+
+    assert.equal((await owner("/admin/user-status", "POST", { id, action: "ban", reason: "Fraud" })).status, 200);
+    const login = await client()("/login", "POST", { email: "ban-me@test.local", password: "test-password-123" });
+    assert.equal(login.status, 403);
+    assert.match(login.json.error, /closed by an administrator/i);
+  });
+
+  test("restoring lets them back in", async () => {
+    const owner = client();
+    await owner("/login", "POST", { email: "owner@test.local", password: "test-password-123" });
+    const back = client();
+    await signUp(back, "restore-me@test.local");
+    const id = (await owner("/admin/overview")).json.users.find((u) => u.email === "restore-me@test.local").id;
+
+    await owner("/admin/user-status", "POST", { id, action: "suspend", days: 7 });
+    assert.equal((await client()("/login", "POST", { email: "restore-me@test.local", password: "test-password-123" })).status, 403);
+
+    assert.equal((await owner("/admin/user-status", "POST", { id, action: "restore" })).status, 200);
+    assert.equal((await client()("/login", "POST", { email: "restore-me@test.local", password: "test-password-123" })).status, 200);
+  });
+
+  test("the owner cannot be suspended, and nobody can suspend themselves", async () => {
+    const owner = client();
+    await owner("/login", "POST", { email: "owner@test.local", password: "test-password-123" });
+    const ownerId = (await owner("/me")).json.me.id;
+    assert.equal((await owner("/admin/user-status", "POST", { id: ownerId, action: "ban" })).status, 400);
+  });
+
+  test("a member cannot suspend anyone", async () => {
+    const member = client();
+    await signUp(member, "not-a-mod@test.local");
+    assert.equal((await member("/admin/user-status", "POST", { id: "anyone", action: "ban" })).status, 404);
+  });
+});

@@ -46,6 +46,14 @@ function isAdmin(u) {
 }
 /* Root admins are always shown as "Admin" — the handle is derived, never stored,
    so it can't drift and can't be renamed from the profile screen. */
+/* null when the account is usable. A lapsed suspension is treated as lifted
+   here; the request gate clears the record when it next sees it. */
+function suspensionMessage(u) {
+  if (!u || !u.suspended) return null;
+  if (u.suspended.permanent) return "This account has been closed by an administrator.";
+  if (u.suspended.until && now() >= u.suspended.until) return null;
+  return "This account is suspended until " + new Date(u.suspended.until).toLocaleDateString("en-AU") + ".";
+}
 function displayHandle(u) {
   return isRootAdmin(u) ? ADMIN_HANDLE : u.handle;
 }
@@ -393,23 +401,25 @@ function jobSalary(min, max) {
 function stripTags(s) {
   return String(s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "’").replace(/&nbsp;/g, " ").trim();
 }
-async function searchJobsJobicy(query) {
+async function searchJobsJobicy(query, page) {
   // Jobicy's `tag` matches a fixed vocabulary, not free text — "kitchen" returns
   // nothing while an untagged search returns 48. Treat the keyword as a hint:
   // try it, and fall back to the unfiltered feed rather than an empty panel.
-  let rows = await jobicyFetch(query);
-  if (!rows.length && query) rows = await jobicyFetch(null);
+  let rows = await jobicyFetch(query, page);
+  if (!rows.length && query) rows = await jobicyFetch(null, page);
   return rows;
 }
-async function jobicyFetch(tag) {
-  const qs = new URLSearchParams({ geo: "australia", count: String(EXT_LIMIT * 2) });
+async function jobicyFetch(tag, page) {
+  // Jobicy has no offset parameter, so pull a bigger set and take the window
+  const pg = Math.max(1, page || 1);
+  const qs = new URLSearchParams({ geo: "australia", count: String(Math.min(50, EXT_LIMIT * pg + EXT_LIMIT)) });
   if (tag) qs.set("tag", tag);
   const res = await fetch("https://jobicy.com/api/v2/remote-jobs?" + qs.toString(), {
     headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) throw new Error("Jobicy failed: " + res.status);
   const j = await res.json();
-  return (j.jobs || []).slice(0, EXT_LIMIT).map((r) => ({
+  return (j.jobs || []).slice((pg - 1) * EXT_LIMIT, pg * EXT_LIMIT).map((r) => ({
     title: stripTags(r.jobTitle) || "Job listing",
     company: stripTags(r.companyName) || null,
     location: stripTags(r.jobGeo) || "Remote",
@@ -434,7 +444,7 @@ async function searchJobsAdzuna(opts) {
     return adzunaQuery(opts, false);
   }
 }
-async function adzunaQuery({ query, where }, recent) {
+async function adzunaQuery({ query, where, page }, recent) {
   // No content_type param: Adzuna spells it "content-type" and rejects the
   // underscored form with a 400 — but only after auth passes, which is why a
   // fake key returns 401 and a valid one returned 400. JSON is the default.
@@ -448,7 +458,8 @@ async function adzunaQuery({ query, where }, recent) {
   if (recent) { qs.set("max_days_old", "45"); qs.set("sort_by", "date"); }
   if (query) qs.set("what", query);
   if (where) qs.set("where", where);
-  const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/1?" + qs.toString(), { signal: AbortSignal.timeout(12000) });
+  // Adzuna carries the page number in the path, not as a parameter
+  const res = await fetch("https://api.adzuna.com/v1/api/jobs/au/search/" + Math.max(1, page || 1) + "?" + qs.toString(), { signal: AbortSignal.timeout(12000) });
   if (!res.ok) {
     // body often names the cause (bad key, plan limit); never log the query string, it carries the key
     const raw = await res.text().catch(() => "");
@@ -497,15 +508,15 @@ async function searchJobsJooble({ query, where }) {
 /* Local aggregators run together and merge; each is optional, and Jobicy only
    steps in when the merged result is empty. One source being down or unkeyed
    quietly reduces coverage rather than emptying the panel. */
-async function searchJobs({ query, where }) {
+async function searchJobs({ query, where, page }) {
   /* Jobicy runs alongside the paid sources rather than only when they fail.
      It carries remote roles, which are a genuinely different opportunity from
      a job down the road — not a substitute for one — so both belong in the
      panel. Local results are ordered first and every card names its source. */
   const sources = [];
-  if (HAS_JOBS) sources.push(["Adzuna", () => searchJobsAdzuna({ query, where })]);
+  if (HAS_JOBS) sources.push(["Adzuna", () => searchJobsAdzuna({ query, where, page })]);
   if (JOOBLE_API_KEY) sources.push(["Jooble", () => searchJobsJooble({ query, where })]);
-  sources.push(["Jobicy", () => searchJobsJobicy(query)]);
+  sources.push(["Jobicy", () => searchJobsJobicy(query, page)]);
 
   const settled = await Promise.allSettled(sources.map(([, fn]) => fn()));
   const merged = [];
@@ -542,13 +553,13 @@ async function searchJobs({ query, where }) {
   // can genuinely match nothing. Widen to the whole country before giving up.
   if (where && HAS_JOBS) {
     try {
-      const national = await searchJobsAdzuna({ query, where: "" });
+      const national = await searchJobsAdzuna({ query, where: "", page });
       if (national.length) return national.slice(0, EXT_LIMIT);
     } catch (e) {
       console.warn("Adzuna national retry failed:", e.message);
     }
   }
-  return searchJobsJobicy(query);
+  return searchJobsJobicy(query, page);
 }
 
 /* Services — two sources, best-available. Google Places gives ratings and hours
@@ -1267,6 +1278,10 @@ module.exports = async function handler(req, res) {
         return send(res, 401, { error: "Wrong email or password." });
       }
       clearLoginFailures(rateKey);
+      /* Refuse at the door rather than handing out a session that 403s on every
+         request — being told why is kinder than a shell full of errors. */
+      const block = suspensionMessage(user);
+      if (block) return send(res, 403, { error: block, suspended: true });
       const token = sign({ uid: user.id, exp: now() + 30 * 86400000 });
       return send(res, 200, { ok: true, me: meView(user) }, sessionCookie(token));
     }
@@ -1291,6 +1306,23 @@ module.exports = async function handler(req, res) {
     }
     if (!me) return send(res, 401, { error: "Not logged in." });
 
+    /* A suspension with an expiry lifts itself, so nobody has to remember to
+       undo it. A ban has no expiry and stays. Reads and writes are both blocked:
+       a suspended account is not a read-only account. */
+    if (me.suspended) {
+      if (me.suspended.until && now() >= me.suspended.until) {
+        me.suspended = null;
+        await db.put("users", me.id, me);
+      } else {
+        return send(res, 403, {
+          error: me.suspended.permanent
+            ? "This account has been closed by an administrator."
+            : "This account is suspended until " + new Date(me.suspended.until).toLocaleDateString("en-AU") + ".",
+          suspended: true,
+        });
+      }
+    }
+
     if (path === "/me" && method === "GET") return send(res, 200, { me: meView(me), dbMode: dbLive() ? "supabase" : "demo" });
 
     if (path === "/search/ebay" && method === "GET") {
@@ -1309,8 +1341,11 @@ module.exports = async function handler(req, res) {
       const q = String(url.searchParams.get("q") || "").trim().slice(0, 80);
       // "all Australia" scope drops the suburb so the whole country is searched
       const where = url.searchParams.get("scope") === "all" ? "" : [me.suburb, me.state].filter(Boolean).join(", ");
+      const page = Math.min(5, Math.max(1, Number(url.searchParams.get("page")) || 1));
       try {
-        return send(res, 200, { results: await searchJobs({ query: q, where }) });
+        const results = await searchJobs({ query: q, where, page });
+        // a full page suggests there is another; five is the ceiling
+        return send(res, 200, { results, page, more: results.length >= EXT_LIMIT && page < 5 });
       } catch {
         return send(res, 502, { error: "Couldn't reach the job feed — try again." });
       }
@@ -1344,6 +1379,9 @@ module.exports = async function handler(req, res) {
               joined: u.createdAt || null, posts: items.filter((i) => i.userId === u.id && !i.removed).length,
               handoffs: u.handoffs || 0, ecoPoints: u.ecoPoints || 0,
               admin: isAdmin(u), root: isRootAdmin(u), coAdmin: !!u.coAdmin,
+              suspended: u.suspended
+                ? { until: u.suspended.until, permanent: !!u.suspended.permanent, reason: u.suspended.reason || "", by: u.suspended.by || "" }
+                : null,
             })),
           flagged: live
             .filter((i) => (i.flags || []).length)
@@ -1409,6 +1447,49 @@ module.exports = async function handler(req, res) {
           ? "You've been made a co-administrator of Dibs."
           : "Your co-administrator access has been removed.");
         return send(res, 200, { ok: true, coAdmin: target.coAdmin });
+      }
+
+      /* Suspend or ban an account. A suspension carries an expiry and lifts
+         itself; a ban does not. Either way the record is kept — deleting a user
+         would orphan their listings, claims and receipts, and destroy the trail
+         showing why the action was taken. Their listings come down with them. */
+      if (path === "/admin/user-status" && method === "POST") {
+        const target = await db.get("users", String(body.id || ""));
+        if (!target) return send(res, 404, { error: "No such user." });
+        if (isRootAdmin(target)) return send(res, 400, { error: "The owner account can't be suspended." });
+        if (target.id === me.id) return send(res, 400, { error: "You can't suspend your own account." });
+        if (isAdmin(target) && !isRootAdmin(me)) return send(res, 403, { error: "Only the owner can action another administrator." });
+
+        const action = String(body.action || "");
+        const reason = String(body.reason || "").trim().slice(0, 200);
+        const days = Math.min(365, Math.max(1, Number(body.days) || 7));
+
+        if (action === "suspend" || action === "ban") {
+          const until = action === "suspend" ? now() + days * 86400000 : null;
+          target.suspended = { at: now(), until, reason, by: displayHandle(me), permanent: action === "ban" };
+          await db.put("users", target.id, target);
+          // their listings come down too, otherwise a banned account keeps selling
+          const items = await db.list("items");
+          let pulled = 0;
+          for (const it of items.filter((i) => i.userId === target.id && !i.removed)) {
+            it.removed = true; it.removedAt = now();
+            addHistory(it, "Removed — poster's account was " + (action === "ban" ? "banned" : "suspended"));
+            await db.put("items", it.id, it);
+            pulled++;
+          }
+          await notify(target.id, action === "ban"
+            ? "Your account has been closed by an administrator." + (reason ? " Reason: " + reason : "")
+            : "Your account is suspended until " + new Date(until).toLocaleDateString("en-AU") + "." + (reason ? " Reason: " + reason : ""), null);
+          return send(res, 200, { ok: true, action, until, listingsPulled: pulled });
+        }
+
+        if (action === "restore") {
+          target.suspended = null;
+          await db.put("users", target.id, target);
+          await notify(target.id, "Your account has been restored. Your previous listings stay removed — you're welcome to post again.", null);
+          return send(res, 200, { ok: true, action });
+        }
+        return send(res, 400, { error: "Unknown action." });
       }
 
       /* Moderation: clear the flags and keep it live, or take it down. */

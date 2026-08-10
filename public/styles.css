@@ -335,6 +335,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .wdelta{font-size:11.5px;font-weight:700;color:var(--soft);margin:6px 0 9px}
 .wdelta.up{color:var(--amber)}
 .wdelta.down{color:var(--teal)}
+/* "More jobs" pager under the listings */
+.morewrap{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:12px 0 2px}
+.morehint{font-size:11.5px;color:var(--faint);font-weight:600}
+.morewrap .pill[disabled]{opacity:.6;cursor:default}
 /* sign-up prompt filling the guest sidebar, where the truck banner sits for members */
 .gjoin{margin-top:20px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card2)}
 .gjt{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:.5px;color:var(--ink);margin:0 0 6px}
@@ -346,6 +350,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .cqt{font-size:13.5px;font-weight:700;color:var(--ink)}
 .cqbadge{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;border-radius:999px;padding:3px 8px;background:var(--line);color:var(--soft)}
 .cqbadge.pending{background:var(--ambglow);color:var(--amber)}
+.cqbadge.banned{background:var(--redglow);color:var(--red)}
+.susnote{font-family:'Manrope',sans-serif;font-size:10.5px;color:var(--red);margin-top:4px;font-weight:600}
 .cqbadge.arranged{background:var(--tealglow);color:var(--teal)}
 .cqbadge.done{background:var(--tealglow);color:var(--teal)}
 .cqmeta{font-size:11.5px;color:var(--soft);margin-top:5px}
