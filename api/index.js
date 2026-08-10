@@ -892,6 +892,66 @@ async function probeExternalSources() {
   return out;
 }
 
+/* ---- Media storage ----
+   Photos used to be kept as base64 inside the listing row. That put up to 1.7MB
+   of image bytes in a record the feed reads on every page load, and capped the
+   free database tier at a few hundred listings. They now go to Supabase Storage
+   and the row keeps a URL.
+
+   Uploading is best-effort: if storage isn't configured or an upload fails, the
+   data URI is kept as before. A photo that can't be filed is not a reason to
+   lose someone's listing. */
+const MEDIA_BUCKET = "listing-media";
+let bucketReady = false;
+async function ensureBucket() {
+  if (bucketReady || !HAS_DB) return bucketReady;
+  try {
+    const res = await fetch(SUPA_URL + "/storage/v1/bucket", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + SUPA_KEY, apikey: SUPA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: MEDIA_BUCKET, name: MEDIA_BUCKET, public: true }),
+      signal: AbortSignal.timeout(8000),
+    });
+    // 409 means it already exists, which is the normal case after the first run
+    bucketReady = res.ok || res.status === 409;
+  } catch { bucketReady = false; }
+  return bucketReady;
+}
+async function storeMedia(dataUri, itemId, idx) {
+  if (!HAS_DB) return dataUri;
+  const m = /^data:([a-zA-Z0-9/+.-]+);base64,(.*)$/.exec(dataUri);
+  if (!m) return dataUri;
+  if (!(await ensureBucket())) return dataUri;
+  const mime = m[1];
+  const bytes = Buffer.from(m[2], "base64");
+  const ext = (mime.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 5);
+  const objectPath = itemId + "/" + idx + "." + ext;
+  const res = await fetch(SUPA_URL + "/storage/v1/object/" + MEDIA_BUCKET + "/" + objectPath, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + SUPA_KEY, apikey: SUPA_KEY,
+      "Content-Type": mime, "x-upsert": "true", "Cache-Control": "public, max-age=31536000",
+    },
+    body: bytes,
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error("Storage upload " + res.status);
+  return SUPA_URL + "/storage/v1/object/public/" + MEDIA_BUCKET + "/" + objectPath;
+}
+async function offloadMedia(media, itemId) {
+  const out = [];
+  for (let i = 0; i < media.length; i++) {
+    const m = media[i];
+    try {
+      out.push({ type: m.type, data: await storeMedia(m.data, itemId, i) });
+    } catch (e) {
+      console.warn("Media upload failed, keeping it inline:", e.message);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
 /* ---- Price watch ----
    A watched item's price is recorded each day so the app can say what something
    normally costs rather than only what it costs right now. History is observed,
@@ -1622,8 +1682,11 @@ module.exports = async function handler(req, res) {
       const concierge = !!body.concierge && NON_KERB_CATS.indexOf(category) === -1 && /\d/.test(conciergeAddress)
         ? { requested: true, address: conciergeAddress, requestedAt: now() }
         : null;
+      const itemId = uid("i");
+      // photos go to object storage; the row keeps URLs, not image bytes
+      media = await offloadMedia(media, itemId);
       const item = {
-        id: uid("i"), userId: me.id,
+        id: itemId, userId: me.id,
         title, desc: String(body.desc || "").slice(0, 240),
         category,
         media, platforms, price, concierge,

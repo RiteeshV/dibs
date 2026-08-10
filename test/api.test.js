@@ -321,3 +321,32 @@ describe("admin guest preview", () => {
     assert.equal((await owner("/me?guest=1")).json.me.isAdmin, false);
   });
 });
+
+describe("listing photos", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+  test("a photo survives posting even with no object storage configured", async () => {
+    const poster = client();
+    await signUp(poster, "photo@test.local");
+    const r = await poster("/items", "POST", {
+      title: "Chair with a photo", category: "furniture", desc: "one picture",
+      media: [{ type: "image", data: PNG }],
+    });
+    assert.equal(r.status, 200, "an unavailable bucket must not cost the listing");
+    const feed = (await poster("/items")).json.items;
+    const mine = feed.find((i) => i.title === "Chair with a photo");
+    assert.equal(mine.media.length, 1);
+    assert.equal(mine.media[0].type, "image");
+    assert.ok(mine.media[0].data, "the photo must still be there in some form");
+  });
+
+  test("a bogus attachment is still refused", async () => {
+    const poster = client();
+    await signUp(poster, "photo-b@test.local");
+    const r = await poster("/items", "POST", {
+      title: "Nice try", category: "furniture",
+      media: [{ type: "image", data: "https://example.com/not-a-data-uri.png" }],
+    });
+    assert.equal(r.status, 400);
+  });
+});
