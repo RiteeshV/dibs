@@ -1520,8 +1520,13 @@ module.exports = async function handler(req, res) {
         : [me.suburb, me.state].filter(Boolean).join(", ");
       try {
         return send(res, 200, { results: await searchServices(place, q) });
-      } catch {
-        return send(res, 502, { error: "Couldn't reach the local business directory — try again." });
+      } catch (e) {
+        /* OpenStreetMap's public query service being overloaded is not an error
+           the visitor can act on. Answer with an empty list so the panel can
+           explain itself and offer the outbound links, rather than rendering a
+           failure for something that isn't the app's fault. */
+        console.warn("Services lookup failed for", JSON.stringify(place), "-", e.message);
+        return send(res, 200, { results: [], degraded: true });
       }
     }
 
